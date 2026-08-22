@@ -22,6 +22,8 @@ export interface LuaPhysicalDeviceItem {
     deviceId: string;
     displayName: string;
     online: boolean;
+    macAddress?: string | null;
+    clientId?: string | null;
     firmwareVersion?: string | null;
     bootId?: string | null;
     capabilities: string[];

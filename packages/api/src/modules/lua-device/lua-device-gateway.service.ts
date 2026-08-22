@@ -16,7 +16,7 @@ import type { Duplex } from "stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import type { CreateLuaDeviceRunDto } from "./lua-device.dto";
-import { calculateLuaChunkCrc32 } from "./lua-device-protocol";
+import { calculateLuaChunkCrc32, extractLuaHelloIdentities } from "./lua-device-protocol";
 import { encodeWavToOpusFrames, type OpusSpeakPayload } from "./wav-to-opus";
 
 const MAX_MESSAGE_BYTES = 80 * 1024;
@@ -42,6 +42,10 @@ type ClientState = {
     deviceId?: string;
     bootId?: string;
     connectionId?: string;
+    macAddress?: string;
+    clientId?: string;
+    headerDeviceId?: string;
+    headerClientId?: string;
     pending: Map<string, PendingRequest>;
 };
 
@@ -70,6 +74,13 @@ function numberField(value: Record<string, unknown>, key: string): number | unde
 
 function sha256(value: Buffer | string): string {
     return createHash("sha256").update(value).digest("hex");
+}
+
+function headerValue(request: IncomingMessage, name: string): string | undefined {
+    const raw = request.headers[name];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
 }
 
 @Injectable()
@@ -340,6 +351,8 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             alive: true,
             protocol: "legacy",
             pending: new Map(),
+            headerDeviceId: headerValue(request, "device-id"),
+            headerClientId: headerValue(request, "client-id"),
             helloTimer: setTimeout(
                 () => socket.close(4401, "hello timeout"),
                 HELLO_TIMEOUT_MS,
@@ -374,6 +387,11 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             const data = isRecord(parsed.data) ? { ...parsed.data } : parsed;
             if (typeof parsed.protocol === "string" && typeof data.protocol !== "string") {
                 data.protocol = parsed.protocol;
+            }
+            if (isRecord(parsed.device)) {
+                data.device = isRecord(data.device)
+                    ? { ...parsed.device, ...data.device }
+                    : parsed.device;
             }
             envelope = {
                 v: 1,
@@ -417,11 +435,12 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     private async registerConnection(socket: WebSocket, state: ClientState, envelope: Envelope) {
         const data = envelope.data;
         const deviceObj = isRecord(data.device) ? data.device : {};
-        const deviceId = (
-            stringField(data, "device_id") ||
-            stringField(deviceObj, "uuid") ||
-            stringField(deviceObj, "mac")
-        )?.toLowerCase();
+        const identities = extractLuaHelloIdentities({
+            data,
+            headerDeviceId: state.headerDeviceId,
+            headerClientId: state.headerClientId,
+        });
+        const deviceId = identities.deviceId?.toLowerCase();
         const bootId = stringField(data, "boot_id") || randomUUID();
         const firmwareVersion = (
             stringField(data, "firmware_version") ||
@@ -448,6 +467,8 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         state.ready = true;
         state.deviceId = deviceId;
         state.bootId = bootId;
+        state.macAddress = identities.macAddress?.toLowerCase();
+        state.clientId = identities.clientId?.toLowerCase();
         state.connectionId = randomUUID();
         const previous = this.clients.get(deviceId);
         if (previous && previous.socket !== socket) previous.socket.close(4000, "replaced");
@@ -465,6 +486,8 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         ].filter((item): item is string => typeof item === "string");
         device.capabilities = [...new Set(helloCaps)];
         device.limits = this.parseLimits(data.limits);
+        const macAddress = state.macAddress;
+        const clientId = state.clientId;
         device.runtime = isRecord(data.runtime)
             ? {
                   executionModel: stringField(data.runtime, "execution_model") || "main_once",
@@ -473,13 +496,20 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
                       (state.protocol === "lap" ? "claw4.v1" : "xiaozhi.v1"),
                   transferStorage: stringField(data.runtime, "transfer_storage") || "ram",
                   maxRunTimeoutMs: numberField(data.runtime, "max_run_timeout_ms") || 60_000,
+                  ...(macAddress ? { macAddress } : {}),
+                  ...(clientId ? { clientId } : {}),
               }
             : {
                   executionModel: "main_once",
                   apiVersion: state.protocol === "lap" ? "claw4.v1" : "xiaozhi.v1",
                   transferStorage: "ram",
                   maxRunTimeoutMs: 60_000,
+                  ...(macAddress ? { macAddress } : {}),
+                  ...(clientId ? { clientId } : {}),
               };
+        this.logger.log(
+            `Lua device ${deviceId} connected protocol=${state.protocol} mac=${macAddress ?? "-"} client=${clientId ?? "-"}`,
+        );
         await this.deviceRepository.save(device);
         await this.connectionRepository.save(
             this.connectionRepository.create({
@@ -1028,11 +1058,16 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     }
 
     private serializeDevice(device: LuaPhysicalDevice) {
+        const live = this.clients.get(device.deviceId)?.state;
+        const macAddress = live?.macAddress || device.runtime?.macAddress;
+        const clientId = live?.clientId || device.runtime?.clientId;
         return {
             id: device.id,
             deviceId: device.deviceId,
             displayName: device.displayName,
-            online: this.clients.has(device.deviceId),
+            online: Boolean(live),
+            macAddress,
+            clientId,
             firmwareVersion: device.firmwareVersion,
             bootId: device.bootId,
             capabilities: device.capabilities,

@@ -37,4 +37,22 @@ describe("matchLuaDeviceId", () => {
             ),
         ).toBeUndefined();
     });
+
+    it("matches Xiaozhi MAC to a Lua channel that registered with board UUID", () => {
+        const match = matchLuaDeviceId(
+            [
+                {
+                    deviceId: "3f2c1b0a-1111-4c2d-9e8f-abcdef123456",
+                    macAddress: "aa:bb:cc:dd:ee:ff",
+                    clientId: "3f2c1b0a-1111-4c2d-9e8f-abcdef123456",
+                    online: true,
+                },
+            ],
+            [{ macAddress: "AA-BB-CC-DD-EE-FF", clientId: "", online: true }],
+        );
+        expect(match).toEqual({
+            deviceId: "3f2c1b0a-1111-4c2d-9e8f-abcdef123456",
+            online: true,
+        });
+    });
 });
