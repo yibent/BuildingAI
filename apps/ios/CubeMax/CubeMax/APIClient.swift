@@ -286,25 +286,20 @@ actor APIClient {
         return result
     }
 
-    func xiaomiAccounts() async throws -> [XiaomiHomeAccount] { try await request("/smart-home/xiaomi/accounts") }
-    func importXiaomiCredentials(_ credentials: String) async throws -> XiaomiHomeAccount {
-        try await request("/smart-home/xiaomi/import", method: "POST", body: ImportXiaomiRequest(credentials: credentials))
+    func homeAssistantInstance() async throws -> HomeAssistantInstance? {
+        try await request("/smart-home/ha/instance")
     }
-    func syncXiaomiAccount(_ id: String) async throws -> XiaomiHomeAccount {
-        try await request("/smart-home/xiaomi/accounts/\(id)/sync", method: "POST")
+    func homeAssistantDevices() async throws -> [HomeAssistantDevice] {
+        try await request("/smart-home/ha/devices")
     }
-    func deleteXiaomiAccount(_ id: String) async throws {
-        try await requestVoid("/smart-home/xiaomi/accounts/\(id)", method: "DELETE")
+    func syncHomeAssistant() async throws -> HomeAssistantInstance {
+        try await request("/smart-home/ha/instance/sync", method: "POST")
     }
-    func xiaomiDevices() async throws -> [XiaomiDevice] { try await request("/smart-home/xiaomi/devices") }
-    func refreshXiaomiDevice(_ id: String) async throws -> XiaomiDevice {
-        try await request("/smart-home/xiaomi/devices/\(id)/refresh", method: "POST")
+    func refreshHomeAssistantDevice(_ id: String) async throws -> HomeAssistantDevice {
+        try await request("/smart-home/ha/devices/\(id)/refresh", method: "POST")
     }
-    func setXiaomiProperty(_ id: String, siid: Int, piid: Int, value: JSONValue) async throws -> XiaomiDevice {
-        try await request("/smart-home/xiaomi/devices/\(id)/properties", method: "POST", body: XiaomiPropertyRequest(siid: siid, piid: piid, value: value))
-    }
-    func executeXiaomiAction(_ id: String, siid: Int, aiid: Int, inputs: [JSONValue]) async throws -> XiaomiDevice {
-        try await request("/smart-home/xiaomi/devices/\(id)/actions", method: "POST", body: XiaomiActionRequest(siid: siid, aiid: aiid, inputs: inputs))
+    func controlHomeAssistantDevice(_ id: String, command: HomeAssistantLightCommand) async throws -> HomeAssistantDevice {
+        try await request("/smart-home/ha/devices/\(id)/command", method: "POST", body: command)
     }
 
     func logout() async {
@@ -449,24 +444,4 @@ private struct CreateConversationRequest: Encodable {
     let title: String?
 }
 
-private struct ImportXiaomiRequest: Encodable {
-    let credentials: String
-}
 
-private struct XiaomiPropertyRequest: Encodable {
-    let siid: Int
-    let piid: Int
-    let value: JSONValue
-}
-
-private struct XiaomiActionRequest: Encodable {
-    let siid: Int
-    let aiid: Int
-    let `in`: [JSONValue]
-
-    init(siid: Int, aiid: Int, inputs: [JSONValue]) {
-        self.siid = siid
-        self.aiid = aiid
-        self.in = inputs
-    }
-}

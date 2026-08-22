@@ -1,12 +1,10 @@
 import {
   programmingProjectToolKey,
-  useAllXiaomiHomeDevicesQuery,
+  useHomeAssistantDevicesQuery,
   useMcpServersAllQuery,
   useReplaceProgrammingProjectToolsMutation,
-  useYeelightProDevicesQuery,
+  type HomeAssistantDevice,
   type ProgrammingProjectToolRef,
-  type XiaomiHomeDevice,
-  type YeelightProDevice,
 } from "@buildingai/services/web";
 import { Badge } from "@buildingai/ui/components/ui/badge";
 import { Button } from "@buildingai/ui/components/ui/button";
@@ -55,52 +53,12 @@ const DEVICE_ICONS: Record<string, LucideIcon> = {
 };
 
 function asToolRef(tool: ProgrammingProjectToolRef): ProgrammingProjectToolRef {
-  if (tool.kind === "xiaomi" || tool.kind === "yeelight") return tool;
+  if (tool.kind === "homeassistant") return tool;
   return { kind: "mcp", mcpServerId: tool.mcpServerId, toolName: tool.toolName };
 }
 
-type ListedDevice = {
-  id: string;
-  provider: "xiaomi" | "yeelight";
-  name: string;
-  category: string;
-  categoryLabel: string;
-  online: boolean;
-  homeName: string | null;
-  roomName: string | null;
-  model: string | null;
-};
-
-function toListedXiaomi(device: XiaomiHomeDevice): ListedDevice {
-  return {
-    id: device.id,
-    provider: "xiaomi",
-    name: device.name,
-    category: device.category,
-    categoryLabel: device.categoryLabel,
-    online: device.online,
-    homeName: device.homeName,
-    roomName: device.roomName,
-    model: device.model,
-  };
-}
-
-function toListedYeelight(device: YeelightProDevice): ListedDevice {
-  return {
-    id: device.id,
-    provider: "yeelight",
-    name: device.name,
-    category: device.category,
-    categoryLabel: device.categoryLabel,
-    online: device.online,
-    homeName: device.houseName,
-    roomName: device.roomName,
-    model: device.model,
-  };
-}
-
-function deviceToolRef(device: ListedDevice): ProgrammingProjectToolRef {
-  return { kind: device.provider, deviceId: device.id };
+function deviceToolRef(device: HomeAssistantDevice): ProgrammingProjectToolRef {
+  return { kind: "homeassistant", deviceId: device.id };
 }
 
 export default function ProgrammingToolsPage() {
@@ -112,25 +70,21 @@ export default function ProgrammingToolsPage() {
     () => new Set(project.tools.map((tool) => programmingProjectToolKey(asToolRef(tool)))),
   );
   const serversQuery = useMcpServersAllQuery({ isDisabled: false });
-  const xiaomiQuery = useAllXiaomiHomeDevicesQuery();
-  const yeelightQuery = useYeelightProDevicesQuery();
+  const devicesQuery = useHomeAssistantDevicesQuery();
 
   useEffect(() => {
     setSelectedKeys(new Set(project.tools.map((tool) => programmingProjectToolKey(asToolRef(tool)))));
   }, [project.tools]);
 
-  const devices = useMemo<ListedDevice[]>(() => {
-    const list = [
-      ...(xiaomiQuery.data ?? []).map(toListedXiaomi),
-      ...(yeelightQuery.data ?? []).map(toListedYeelight),
-    ];
+  const devices = useMemo(() => {
+    const list = devicesQuery.data ?? [];
     if (!deferredKeyword) return list;
     return list.filter((device) =>
-      [device.name, device.categoryLabel, device.homeName, device.roomName, device.model, device.provider]
+      [device.name, device.categoryLabel, device.areaName, device.entityId]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase().includes(deferredKeyword)),
     );
-  }, [deferredKeyword, xiaomiQuery.data, yeelightQuery.data]);
+  }, [deferredKeyword, devicesQuery.data]);
 
   const servers = useMemo(
     () =>
@@ -163,15 +117,12 @@ export default function ProgrammingToolsPage() {
         return selectedKeys.has(programmingProjectToolKey(reference)) ? [reference] : [];
       }),
     );
-    const deviceTools = [
-      ...(xiaomiQuery.data ?? []).map(toListedXiaomi),
-      ...(yeelightQuery.data ?? []).map(toListedYeelight),
-    ].flatMap((device) => {
+    const deviceTools = (devicesQuery.data ?? []).flatMap((device) => {
       const reference = deviceToolRef(device);
       return selectedKeys.has(programmingProjectToolKey(reference)) ? [reference] : [];
     });
     return [...deviceTools, ...mcpTools];
-  }, [selectedKeys, serversQuery.data, xiaomiQuery.data, yeelightQuery.data]);
+  }, [selectedKeys, serversQuery.data, devicesQuery.data]);
 
   const savedKeys = useMemo(
     () => new Set(project.tools.map((tool) => programmingProjectToolKey(asToolRef(tool)))),
@@ -192,16 +143,14 @@ export default function ProgrammingToolsPage() {
 
   const isLoading =
     (serversQuery.isLoading && serversQuery.data === undefined) ||
-    (xiaomiQuery.isLoading && xiaomiQuery.data === undefined) ||
-    (yeelightQuery.isLoading && yeelightQuery.data === undefined);
-  const isError = serversQuery.isError && xiaomiQuery.isError && yeelightQuery.isError;
+    (devicesQuery.isLoading && devicesQuery.data === undefined);
+  const isError = serversQuery.isError && devicesQuery.isError;
   const isEmpty = devices.length === 0 && servers.length === 0;
-  const isFetching = serversQuery.isFetching || xiaomiQuery.isFetching || yeelightQuery.isFetching;
+  const isFetching = serversQuery.isFetching || devicesQuery.isFetching;
 
   const refetchAll = () => {
     void serversQuery.refetch();
-    void xiaomiQuery.refetch();
-    void yeelightQuery.refetch();
+    void devicesQuery.refetch();
   };
 
   return (
@@ -274,7 +223,7 @@ export default function ProgrammingToolsPage() {
               <EmptyDescription>
                 {deferredKeyword
                   ? "尝试调整搜索内容。"
-                  : "先添加米家/易来设备，或在 MCP 服务中启用工具。"}
+                  : "先连接 Home Assistant 并同步设备，或在 MCP 服务中启用工具。"}
               </EmptyDescription>
             </EmptyHeader>
             {!deferredKeyword && (
@@ -299,7 +248,7 @@ export default function ProgrammingToolsPage() {
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate text-sm font-semibold">物联网家具</h2>
                     <p className="text-muted-foreground truncate text-xs">
-                      米家与易来设备可作为工作流工具直接拖入画布
+                      Home Assistant 设备可作为工作流工具直接拖入画布
                     </p>
                   </div>
                   <Badge variant="outline" className="font-normal">
@@ -315,7 +264,7 @@ export default function ProgrammingToolsPage() {
                   {devices.map((device) => {
                     const reference = deviceToolRef(device);
                     const checked = selectedKeys.has(programmingProjectToolKey(reference));
-                    const checkboxId = `device-${device.provider}-${device.id}`;
+                    const checkboxId = `device-ha-${device.id}`;
                     const Icon = DEVICE_ICONS[device.category] || Boxes;
                     return (
                       <label
@@ -336,9 +285,9 @@ export default function ProgrammingToolsPage() {
                           <span className="block text-sm font-medium">{device.name}</span>
                           <span className="text-muted-foreground mt-0.5 block text-xs leading-4">
                             {[
-                              device.provider === "yeelight" ? "易来" : "米家",
                               device.categoryLabel || device.category,
-                              device.roomName || device.homeName,
+                              device.areaName,
+                              device.entityId,
                             ]
                               .filter(Boolean)
                               .join(" · ")}

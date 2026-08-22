@@ -13,8 +13,7 @@ import {
 import { Repository } from "@buildingai/db/typeorm";
 import { HttpErrorFactory } from "@buildingai/errors";
 import { LuaDeviceGatewayService } from "@modules/lua-device/lua-device-gateway.service";
-import { XiaomiHomeService } from "@modules/smart-home/xiaomi-home.service";
-import { YeelightProService } from "@modules/smart-home/yeelight-pro.service";
+import { HomeAssistantService } from "@modules/smart-home/home-assistant.service";
 import { Injectable } from "@nestjs/common";
 
 import type { CreateLuaModuleDto, QueryLuaModuleDto } from "../lua/lua-module.dto";
@@ -190,8 +189,7 @@ export class ProgrammingProjectService {
         private readonly luaDeviceGatewayService: LuaDeviceGatewayService,
         private readonly xiaozhiService: XiaozhiService,
         private readonly runtimeDeviceService: WorkflowRuntimeDeviceService,
-        private readonly xiaomiHomeService: XiaomiHomeService,
-        private readonly yeelightProService: YeelightProService,
+        private readonly homeAssistantService: HomeAssistantService,
     ) {}
 
     async findAll(
@@ -652,14 +650,9 @@ export class ProgrammingProjectService {
     ): Promise<void> {
         await Promise.all(
             tools.map(async (tool) => {
-                if (tool.kind === "xiaomi") {
-                    if (!tool.deviceId) throw HttpErrorFactory.badRequest("米家设备缺少 deviceId");
-                    await this.xiaomiHomeService.getDevice(userId, tool.deviceId);
-                    return;
-                }
-                if (tool.kind === "yeelight") {
-                    if (!tool.deviceId) throw HttpErrorFactory.badRequest("易来设备缺少 deviceId");
-                    await this.yeelightProService.getDevice(userId, tool.deviceId);
+                if (tool.kind === "homeassistant") {
+                    if (!tool.deviceId) throw HttpErrorFactory.badRequest("智能家居设备缺少 deviceId");
+                    await this.homeAssistantService.getDevice(userId, tool.deviceId);
                     return;
                 }
                 if (!tool.mcpServerId || !tool.toolName) {
@@ -700,7 +693,7 @@ export class ProgrammingProjectService {
             }
             if (
                 node.type === "smart_home" &&
-                (data?.provider === "xiaomi" || data?.provider === "yeelight") &&
+                data?.provider === "homeassistant" &&
                 typeof data?.deviceId === "string" &&
                 data.deviceId
             ) {

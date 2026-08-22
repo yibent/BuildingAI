@@ -8,7 +8,7 @@ export type ProgrammingRuntimeTarget = "local" | "simulator" | "device";
 /** The two intentionally different programming experiences. */
 export type ProgrammingProjectType = "conversation" | "application";
 
-export type ProgrammingProjectToolKind = "mcp" | "xiaomi" | "yeelight";
+export type ProgrammingProjectToolKind = "mcp" | "homeassistant";
 
 export type ProgrammingProjectToolSnapshot = {
     kind: ProgrammingProjectToolKind;
@@ -20,7 +20,7 @@ export type ProgrammingProjectToolSnapshot = {
 export function programmingProjectToolKind(
     value: string | null | undefined,
 ): ProgrammingProjectToolKind {
-    return value === "xiaomi" || value === "yeelight" ? value : "mcp";
+    return value === "homeassistant" ? value : "mcp";
 }
 
 export function programmingProjectToolKey(tool: {

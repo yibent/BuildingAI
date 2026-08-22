@@ -12,7 +12,7 @@ const PROGRAMMING_PROJECTS_PATH = "/programming-projects";
 export type ProgrammingRuntimeTarget = "local" | "simulator" | "device";
 export type ProgrammingProjectType = "conversation" | "application";
 
-export type ProgrammingProjectToolKind = "mcp" | "xiaomi" | "yeelight";
+export type ProgrammingProjectToolKind = "mcp" | "homeassistant";
 
 export type ProgrammingProjectToolRef = {
     kind?: ProgrammingProjectToolKind;
@@ -22,7 +22,7 @@ export type ProgrammingProjectToolRef = {
 };
 
 export function programmingProjectToolKey(tool: ProgrammingProjectToolRef): string {
-    const kind = tool.kind === "xiaomi" || tool.kind === "yeelight" ? tool.kind : "mcp";
+    const kind = tool.kind === "homeassistant" ? tool.kind : "mcp";
     if (kind === "mcp") return `mcp\u0000${tool.mcpServerId ?? ""}\u0000${tool.toolName ?? ""}`;
     return `${kind}\u0000${tool.deviceId ?? ""}`;
 }

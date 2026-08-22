@@ -211,6 +211,34 @@ export class PublishBuildingAgentToCubeCatDto {
     @IsString()
     @MaxLength(40)
     language?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(12000, { message: "角色设定不能超过12000个字符" })
+    character?: string;
+
+    @IsOptional()
+    @IsIn(["slow", "normal", "fast"])
+    asrSpeed?: "slow" | "normal" | "fast";
+
+    @IsOptional()
+    @IsIn(["slow", "normal", "fast"])
+    ttsSpeechSpeed?: "slow" | "normal" | "fast";
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(-3)
+    @Max(3)
+    ttsPitch?: number;
+
+    @IsOptional()
+    @IsIn(["OFF", "SHORT_TERM", "LONG_TERM"])
+    memoryType?: "OFF" | "SHORT_TERM" | "LONG_TERM";
+
+    @IsOptional()
+    @IsBoolean()
+    teenMode?: boolean;
 }
 
 export class RenameXiaozhiAgentDto {

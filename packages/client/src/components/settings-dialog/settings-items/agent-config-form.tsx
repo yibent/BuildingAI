@@ -386,7 +386,7 @@ export function AgentConfigFields({
         {form.customCharacter ? (
           <Textarea
             rows={4}
-            maxLength={2000}
+            maxLength={12000}
             placeholder="描述这个角色的身份、说话风格和教学任务"
             value={form.character}
             disabled={fieldDisabled("character")}

@@ -33,7 +33,7 @@ CubeMax 应用工作流需要一个**全新**节点：当流程运行到（或�
 
 | 层 | 现状 | 关键路径 |
 | --- | --- | --- |
-| iOS App | 登录（`terminal: 4` = `UserTerminal.APP`）、触发器、对话、小米家居、方糖猫资产页。无相机、无 WS、无 APNs | `apps/ios/CubeMax/CubeMax/` |
+| iOS App | 登录（`terminal: 4` = `UserTerminal.APP`）、触发器、对话、Home Assistant 家居、方糖猫资产页。无相机、无 WS、无 APNs | `apps/ios/CubeMax/CubeMax/` |
 | 触发器执行 | `POST /programming-triggers/:id/execute` → `WorkflowRuntimeExecutionService.runPublishedProject` → 内存任务 `WorkflowApplication.tasks`，立即返回 `{ taskID }` | `programming-trigger.service.ts`、`workflow-runtime-execution.service.ts` |
 | 工作流运行时 | `@flowgram.ai/runtime-js` 按节点 `type` 找 executor；已注册 `start/end/llm/mcp/http/code/lua/…`。Lua 通过 `registerLuaExecutor` 把执行委托给 Nest | `packages/@flowgram.ai/runtime-js/src/nodes/index.ts` |
 | 应用节点 | 编辑器有 `agent` / `wait` / `webhook` / `vision` / `speech` / `device_control`。`WorkflowApplicationExecutorService` 是**死代码**：未列入 `WorkflowModule.providers`，也从未被 `TaskValidateAPI` / 发布路径调用。不要在里面加校验并指望它会跑 | `workflow-application-executor.service.ts` |

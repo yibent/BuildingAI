@@ -103,8 +103,8 @@ struct ProfileView: View {
                             HStack {
                                 Text("我的智能家居")
                                 Spacer()
-                                if !model.accounts.isEmpty {
-                                    Text("\(model.accounts.count) 个账号")
+                                if let instance = model.homeAssistant {
+                                    Text(instance.displayName)
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -131,7 +131,7 @@ struct ProfileView: View {
             .task {
                 workspaceSelection = model.selectedWorkspaceId ?? "personal"
                 modelId = model.defaultModelId
-                if model.accounts.isEmpty { await model.loadSmartHome() }
+                if model.homeAssistant == nil { await model.loadSmartHome() }
                 if model.cubeCatDevices.isEmpty { await model.loadCubeCatDevices() }
             }
             .onChange(of: modelId) { _, value in model.defaultModelId = value }

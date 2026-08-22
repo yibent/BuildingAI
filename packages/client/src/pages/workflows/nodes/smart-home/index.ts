@@ -11,7 +11,7 @@ export const SmartHomeNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.SmartHome,
   info: {
     icon: iconDevice,
-    description: "控制已加入工程的米家或易来设备，使用开关、滑条和颜色选择而不是填参数。",
+    description: "控制已加入工程的 Home Assistant 设备，使用开关、滑条和颜色选择而不是填参数。",
   },
   meta: {
     nodePanelLabel: "智能家居",
