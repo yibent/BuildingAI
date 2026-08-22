@@ -120,13 +120,14 @@ audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示加提示音�
     local ui = require("ui")
     local runtime = require("runtime")
 
-    local size = ui.screen_size()
+    local width, height = ui.screen_size()
     local screen = ui.screen({ background = 0x101820 })
-    local title = ui.label(screen, {
+    local title = ui.label({
+      parent = screen,
       text = tostring(params.title or "CubeCat"),
       color = 0xFFFFFF,
     })
-    local btn = ui.button(screen, { text = "确定" })
+    local btn = ui.button({ parent = screen, text = "确定" })
 
     ui.load(screen)
 
@@ -144,13 +145,13 @@ audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示加提示音�
       end
     end
 
-    return { ok = true, width = size.width, height = size.height }
+    return { ok = true, width = width, height = height }
 
 常用 API：
 - ui.screen({ background = 0x101820 }) 创建屏幕
-- ui.screen_size() 返回 { width, height }
+- ui.screen_size() 返回 width, height 两个数字
 - ui.load(screen) 把屏幕显示出来
-- ui.label / ui.button / ui.rect / ui.circle / ui.line / ui.arc / ui.image 创建控件
+- ui.label / ui.button / ui.rect / ui.circle / ui.line / ui.arc / ui.image 创建控件，参数是一张表：{ parent = screen, x = 0, y = 0, ... }。也可以写成 ui.rect(screen, { x = 0, y = 0, ... })
 - ui.set_text(obj, text) 改文字
 - ui.update() 刷新
 - ui.delete(obj) 删除控件
