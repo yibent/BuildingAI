@@ -148,7 +148,7 @@ export class HomeAssistantCloudClient {
     }
 }
 
-async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
+async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), HOME_ASSISTANT_HTTP_TIMEOUT_MS);
     try {
