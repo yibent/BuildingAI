@@ -15,15 +15,14 @@ const AGENT_PROMPT_CHOOSE = `你是 CubeCat 解密馆馆长。说话简短、神
 2. lock：线索密码锁，进阶
 3. trail：两步暗号，高难
 
-现在请邀请小朋友开始探险，然后立刻调用工具 choose_puzzle。
-参数 game 只能填 caesar、lock 或 trail。第一关默认选 caesar，除非小朋友点名要更难的。`;
+现在请邀请小朋友开始探险。第一关默认选 caesar，除非小朋友点名要更难的。`;
 
 const AGENT_PROMPT_LISTEN = `你是 CubeCat 解密馆馆长。题目已经由程序在设备屏幕上公布。
 
-不要公布或编造答案。听小朋友说出答案后，立刻调用工具 submit_answer。
+不要公布或编造答案。听小朋友说出答案后立刻回传。
 - 移位密码：answer 填三个大写英文字母，例如 CAT
 - 数字类关卡：answer 只填阿拉伯数字，例如 124
-如果听不清，请再问一次，确认后再调用工具。`;
+如果听不清，请再问一次，确认后再回传。`;
 
 const AGENT_PROMPT_ADAPT = `你是 CubeCat 解密馆馆长。上一关已经由程序判定完毕。
 
@@ -31,7 +30,7 @@ const AGENT_PROMPT_ADAPT = `你是 CubeCat 解密馆馆长。上一关已经由�
 - 解开了：升一档难度（caesar→lock→trail）
 - 没解开：换一款更简单或同级的，不要重复上一关
 
-然后立刻调用工具 choose_puzzle，参数 game 只能填 caesar、lock 或 trail。
+选好后立刻回传。game 只能填 caesar、lock 或 trail。
 不要自己出题，不要宣布下一题的答案。`;
 
 export const DECRYPT_TEMPLATE_LUA = {
@@ -536,7 +535,7 @@ export function buildDecryptGameSchema(luaModuleId: string): Record<string, unkn
                 "webhook_choose_1",
                 "等待选第一关",
                 "choose_puzzle",
-                "小智为玩家挑选一款解密小游戏后调用。",
+                "邀请结束后立刻回传所选游戏。game 只能填 caesar、lock 或 trail。第一关默认 caesar，除非小朋友点名要更难的。",
                 choose,
                 60000,
                 { x: 1060, y: 140 },
@@ -563,7 +562,7 @@ export function buildDecryptGameSchema(luaModuleId: string): Record<string, unkn
                 "webhook_answer_1",
                 "等待第一关答案",
                 "submit_answer",
-                "玩家说出答案后调用，把原文回传给工作流。",
+                "听清答案后立刻回传。移位密码填三个大写字母，数字关只填阿拉伯数字。",
                 answer,
                 90000,
                 { x: 2100, y: 140 },
@@ -592,7 +591,7 @@ export function buildDecryptGameSchema(luaModuleId: string): Record<string, unkn
                 "webhook_choose_2",
                 "等待选第二关",
                 "choose_puzzle",
-                "小智根据上一关战绩挑选下一款不同的小游戏。",
+                "根据上一关战绩挑选下一款不同的小游戏后立刻回传。game 只能填 caesar、lock 或 trail。",
                 choose,
                 45000,
                 { x: 2820, y: 540 },
@@ -619,7 +618,7 @@ export function buildDecryptGameSchema(luaModuleId: string): Record<string, unkn
                 "webhook_answer_2",
                 "等待第二关答案",
                 "submit_answer",
-                "玩家说出第二关答案后调用。",
+                "听清第二关答案后立刻回传。",
                 answer,
                 90000,
                 { x: 3900, y: 540 },

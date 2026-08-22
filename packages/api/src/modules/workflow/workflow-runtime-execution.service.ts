@@ -11,6 +11,7 @@ import { Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
 
 import { CameraSessionService } from "../mobile/camera-session.service";
+import { XiaozhiMcpService } from "../organization/services/xiaozhi-mcp.service";
 import {
     assertNoPhoneCameraInsideLoop,
     maxClock,
@@ -72,6 +73,7 @@ export class WorkflowRuntimeExecutionService {
         private readonly programmingProjectService: ProgrammingProjectService,
         private readonly runtimeDeviceService: WorkflowRuntimeDeviceService,
         private readonly cameraSessionService: CameraSessionService,
+        private readonly mcpService: XiaozhiMcpService,
     ) {}
 
     private async loadConfiguredRuntime(): Promise<WorkflowRuntimeJsModule> {
@@ -249,6 +251,7 @@ export class WorkflowRuntimeExecutionService {
             ...params.context,
             workflowTaskId,
             installationId: params.installationId,
+            workflowSchema: params.schema,
         };
         const taskDto = this.workflowEmbeddedExecutorService.prepareTaskDto({
             schema: JSON.stringify(params.schema),
@@ -258,6 +261,7 @@ export class WorkflowRuntimeExecutionService {
         if (!validation.valid) {
             throw new Error(validation.errors?.join("；") || "工作流输入校验失败");
         }
+        await this.ensureApplicationMcp(context);
 
         let warmed = false;
         if (schemaHasPhoneCamera(params.schema)) {
@@ -315,6 +319,19 @@ export class WorkflowRuntimeExecutionService {
             });
         }
         return context;
+    }
+
+    /**
+     * Programming applications talk to CubeCat over the always-on callback
+     * MCP. Connect it when the run starts — not from project settings, and
+     * not by injecting extra tools mid-conversation.
+     */
+    private async ensureApplicationMcp(context: Record<string, unknown>): Promise<void> {
+        const userId = typeof context.userId === "string" ? context.userId : "";
+        const agentId =
+            typeof context.xiaozhiAgentId === "string" ? context.xiaozhiAgentId : "";
+        if (!userId || !agentId) return;
+        await this.mcpService.ensureAgentConnection(userId, agentId);
     }
 
     private async resolveDraftContext(dto: WorkflowRuntimeTaskDto, userId: string) {

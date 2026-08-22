@@ -81,14 +81,14 @@ const NODE_GUIDANCE: Partial<Record<string, NodeGuidanceContent>> = {
     example: "把两个数字相加，再把结果命名为 total。",
   },
   [WorkflowNodeType.Webhook]: {
-    summary: "向 CubeCat 注册一个回传工具，收到调用后带着数据继续。",
+    summary: "停在这里，等到 CubeCat 用常驻回传工具把数据送回来。",
     steps: [
-      "在工程设置里绑定 CubeCat，并确认 MCP 已接入（也可运行时自动接通）",
-      "填写工具名，把生成的提示词片段加到「设置智能体」里",
+      "先在工程设置里绑定 CubeCat；运行应用时会自动接通回传 MCP",
+      "填写事件名和参数；调用说明会自动写入前面的「设置智能体」提示词",
       "从「收到数据」连到下一步；可选地给「错误」接超时处理",
     ],
-    result: "CubeCat 调用这个工具后，参数会出现在输出里。",
-    example: "工具名填 timer_complete，前面的智能体提示词让它在计时结束时调用。",
+    result: "CubeCat 调用常驻回传工具后，参数会出现在输出里。",
+    example: "事件名填 choose_puzzle，前面的智能体提示词会要求它回传 game。",
   },
   [WorkflowNodeType.Wait]: {
     summary: "让流程在这里停一下，等到时间到、CubeCat 调用工具，或收到回传再继续。",
@@ -103,11 +103,11 @@ const NODE_GUIDANCE: Partial<Record<string, NodeGuidanceContent>> = {
   [WorkflowNodeType.Agent]: {
     summary: "切换 CubeCat 的角色提示词，改变它之后怎么和用户说话。",
     steps: [
-      "在工程设置里绑定 CubeCat 智能体",
-      "写好要切换的提示词，或从上游变量接入",
+      "在工程设置里绑定 CubeCat 智能体；运行应用时会自动接通回传 MCP",
+      "写好角色提示词；下游回传端点的调用说明会自动追加",
       "需要时把触发信息接到输入",
     ],
-    result: "设备会使用新的角色提示词；上一个提示词会作为输出给后续节点。",
+    result: "设备会使用新的角色提示词，其中已包含接下来该怎么回传。",
     example: "用户说「开始计时」后，把提示词切成计时助手。",
   },
   [WorkflowNodeType.Comment]: {

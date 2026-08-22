@@ -9,6 +9,7 @@ export type WorkflowRuntimeExecutorContext = {
     publishedSnapshot?: unknown;
     installationId?: string;
     workflowTaskId?: string;
+    workflowSchema?: unknown;
 };
 
 export function getWorkflowRuntimeUserId(context: ExecutionContext): string | undefined {
@@ -40,5 +41,6 @@ export function readRuntimeMetadata(context: ExecutionContext): WorkflowRuntimeE
         ...(typeof metadata.workflowTaskId === "string"
             ? { workflowTaskId: metadata.workflowTaskId }
             : {}),
+        ...(metadata.workflowSchema ? { workflowSchema: metadata.workflowSchema } : {}),
     };
 }

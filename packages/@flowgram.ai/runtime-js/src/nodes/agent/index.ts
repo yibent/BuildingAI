@@ -14,6 +14,7 @@ export type AgentExecutorInput = {
         deviceId?: string;
         xiaozhiAgentId?: string;
         publishedSnapshot?: unknown;
+        workflowSchema?: unknown;
     };
     node: { id: string; type: string; data?: Record<string, unknown> };
     inputs: Record<string, unknown>;
@@ -73,6 +74,7 @@ function getWorkflowRuntimeContext(context: ExecutionContext): AgentExecutorInpu
             ? { xiaozhiAgentId: metadata.xiaozhiAgentId }
             : {}),
         ...(metadata.publishedSnapshot ? { publishedSnapshot: metadata.publishedSnapshot } : {}),
+        ...(metadata.workflowSchema ? { workflowSchema: metadata.workflowSchema } : {}),
     };
 }
 

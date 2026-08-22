@@ -37,6 +37,8 @@ describe("decrypt programming project template", () => {
         );
         expect(JSON.stringify(schema)).toContain("题目已经由程序在设备屏幕上公布");
         expect(JSON.stringify(schema)).not.toContain("设备和语音里公布");
+        expect(JSON.stringify(schema)).not.toContain("立刻调用工具 choose_puzzle");
+        expect(JSON.stringify(schema)).not.toContain("立刻调用工具 submit_answer");
     });
 
     it("announces template text through alert.show", async () => {

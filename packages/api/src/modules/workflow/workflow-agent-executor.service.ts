@@ -2,7 +2,16 @@ import type { ProgrammingProjectPublishedSnapshot } from "@buildingai/db/entitie
 import { HttpErrorFactory } from "@buildingai/errors";
 import { Injectable } from "@nestjs/common";
 
+import { XiaozhiMcpService } from "../organization/services/xiaozhi-mcp.service";
 import { XiaozhiService } from "../organization/services/xiaozhi.service";
+import {
+    appendWebhookInstructions,
+    buildWebhookCallbackInstruction,
+    collectDownstreamWebhookNodes,
+    DEFAULT_CALLBACK_TOOL_NAME,
+    type WorkflowGraph,
+    webhookActionName,
+} from "./workflow-callback";
 
 export type WorkflowAgentExecutorInput = {
     userId?: string;
@@ -10,6 +19,7 @@ export type WorkflowAgentExecutorInput = {
         projectId?: string;
         xiaozhiAgentId?: string;
         publishedSnapshot?: unknown;
+        workflowSchema?: unknown;
     };
     node: {
         id: string;
@@ -35,7 +45,10 @@ function asText(value: unknown): string {
 
 @Injectable()
 export class WorkflowAgentExecutorService {
-    constructor(private readonly xiaozhiService: XiaozhiService) {}
+    constructor(
+        private readonly xiaozhiService: XiaozhiService,
+        private readonly mcpService: XiaozhiMcpService,
+    ) {}
 
     async execute(input: WorkflowAgentExecutorInput): Promise<Record<string, unknown>> {
         if (!input.userId) {
@@ -58,9 +71,10 @@ export class WorkflowAgentExecutorService {
         }
 
         const trigger = asText(input.inputs.trigger).trim();
-        const character = trigger
+        const withTrigger = trigger
             ? `${prompt.trim()}\n\n【工作流触发信息】\n${trigger}`
             : prompt.trim();
+        const character = await this.withWebhookInstructions(withTrigger, input, agentId);
 
         const result = await this.xiaozhiService.switchCharacterForUser(
             input.userId,
@@ -84,6 +98,45 @@ export class WorkflowAgentExecutorService {
         const fromContext = input.runtimeContext?.xiaozhiAgentId;
         if (typeof fromSnapshot === "string" && fromSnapshot) return fromSnapshot;
         if (typeof fromContext === "string" && fromContext) return fromContext;
+        return undefined;
+    }
+
+    private async withWebhookInstructions(
+        prompt: string,
+        input: WorkflowAgentExecutorInput,
+        agentId: string,
+    ): Promise<string> {
+        const schema = this.resolveWorkflowSchema(input);
+        const webhooks = collectDownstreamWebhookNodes(schema, input.node.id);
+        if (!webhooks.length) return prompt;
+        const mcpToolName =
+            (await this.mcpService.resolveCallbackToolName(agentId)) || DEFAULT_CALLBACK_TOOL_NAME;
+        return appendWebhookInstructions(
+            prompt,
+            webhooks.map((node) =>
+                buildWebhookCallbackInstruction({
+                    mcpToolName,
+                    action: webhookActionName(node),
+                    title: asText(node.data?.title),
+                    description: asText(node.data?.toolDescription),
+                    inputSchema: node.data?.inputSchema,
+                }),
+            ),
+        );
+    }
+
+    private resolveWorkflowSchema(input: WorkflowAgentExecutorInput): WorkflowGraph | undefined {
+        const fromContext = input.runtimeContext?.workflowSchema;
+        if (fromContext && typeof fromContext === "object") {
+            return fromContext as WorkflowGraph;
+        }
+        const snapshot = isPublishedSnapshot(input.runtimeContext?.publishedSnapshot)
+            ? input.runtimeContext?.publishedSnapshot
+            : undefined;
+        const fromSnapshot = snapshot?.workflow?.schema;
+        if (fromSnapshot && typeof fromSnapshot === "object") {
+            return fromSnapshot as WorkflowGraph;
+        }
         return undefined;
     }
 }

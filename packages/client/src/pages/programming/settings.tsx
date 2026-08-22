@@ -16,26 +16,11 @@ import {
 import { Separator } from "@buildingai/ui/components/ui/separator";
 import { Skeleton } from "@buildingai/ui/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@buildingai/ui/components/ui/toggle-group";
-import { Cable, Cpu, LoaderCircle, MonitorPlay, PlugZap, RotateCw } from "lucide-react";
-import { useMemo } from "react";
+import { Cpu, MonitorPlay } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import {
-  useBatchConfigureXiaozhiMcpMutation,
-  useReconnectXiaozhiMcpMutation,
-  useXiaozhiMcpConnectionsQuery,
-} from "@/components/settings-dialog/settings-items/xiaozhi-mcp-setting";
-
 import { useProgrammingProject } from "./context";
-
-const MCP_STATUS_LABEL: Record<string, string> = {
-  disabled: "已停用",
-  connecting: "连接中",
-  connected: "已连接",
-  reconnecting: "重连中",
-  error: "连接异常",
-};
 
 const APPLICATION_RUNTIME_ITEMS: Array<{
   value: ProgrammingRuntimeTarget;
@@ -194,7 +179,7 @@ export default function ProjectSettingsPage() {
             <h2 className="text-sm font-medium">CubeCat 设备</h2>
             <p className="text-muted-foreground text-xs">
               选择这台应用要控制的 CubeCat。运行目标为 CubeCat 设备时，Lua
-              模块会发到这台真实设备上执行。
+              模块会发到这台真实设备上执行。应用启动时会自动接通回传 MCP，不用在工程里单独配置。
             </p>
           </div>
           {agentsQuery.isLoading ? (
@@ -233,10 +218,6 @@ export default function ProjectSettingsPage() {
           )}
         </section>
       )}
-
-      {isApplication && project.xiaozhiAgentId ? (
-        <ProjectMcpConnectionPanel agentBindingId={project.xiaozhiAgentId} />
-      ) : null}
 
       {/* 工程信息 */}
       <Separator />
@@ -283,95 +264,5 @@ export default function ProjectSettingsPage() {
         </div>
       </section>
     </div>
-  );
-}
-
-function ProjectMcpConnectionPanel({ agentBindingId }: { agentBindingId: string }) {
-  const { data: connections = [], isLoading } = useXiaozhiMcpConnectionsQuery();
-  const connection = useMemo(
-    () => connections.find((item) => item.agentBindingId === agentBindingId),
-    [agentBindingId, connections],
-  );
-  const configureMutation = useBatchConfigureXiaozhiMcpMutation({
-    onSuccess: (result) => {
-      if (result.failed)
-        toast.error(result.results.find((item) => !item.success)?.message || "MCP 接入失败");
-      else toast.success("CubeCat MCP 已接入");
-    },
-    onError: (error: Error) => toast.error(error.message || "MCP 接入失败"),
-  });
-  const reconnectMutation = useReconnectXiaozhiMcpMutation({
-    onSuccess: () => toast.success("正在重新连接 MCP"),
-    onError: (error: Error) => toast.error(error.message || "重新连接失败"),
-  });
-  const busy = configureMutation.isPending || reconnectMutation.isPending;
-  const statusLabel = connection
-    ? MCP_STATUS_LABEL[connection.status] || connection.status
-    : "未接入";
-
-  return (
-    <section className="space-y-4">
-      <Separator />
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium">MCP 接入</h2>
-        <p className="text-muted-foreground text-xs">
-          回传端点依赖这条连接：本服务连上{" "}
-          <span className="font-mono">wss://api.xiaozhi.me/mcp/</span>
-          ，CubeCat 把工具调用发给小智，小智再转到这里。和讲台「设备管理 → MCP
-          接入」是同一条通道。运行回传端点时也会自动尝试接通。
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
-        <div className="flex items-start gap-3">
-          <Cable className="text-muted-foreground mt-0.5 size-4" />
-          <div>
-            <p className="text-sm font-medium">{statusLabel}</p>
-            {connection?.lastError ? (
-              <p className="text-destructive text-xs">{connection.lastError}</p>
-            ) : (
-              <p className="text-muted-foreground text-xs">
-                {connection?.lastConnectedAt
-                  ? `最近连接 ${new Date(connection.lastConnectedAt).toLocaleString("zh-CN")}`
-                  : "尚未建立到小智 MCP 的 WebSocket"}
-              </p>
-            )}
-          </div>
-        </div>
-        {isLoading ? (
-          <Skeleton className="h-8 w-24" />
-        ) : connection?.status === "connected" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => reconnectMutation.mutate(connection.id)}
-          >
-            {busy ? (
-              <LoaderCircle className="size-4 animate-spin" />
-            ) : (
-              <RotateCw className="size-4" />
-            )}
-            重新连接
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              connection
-                ? reconnectMutation.mutate(connection.id)
-                : configureMutation.mutate({ agentIds: [agentBindingId] })
-            }
-          >
-            {busy ? (
-              <LoaderCircle className="size-4 animate-spin" />
-            ) : (
-              <PlugZap className="size-4" />
-            )}
-            {connection ? "接通 MCP" : "接入 MCP"}
-          </Button>
-        )}
-      </div>
-    </section>
   );
 }

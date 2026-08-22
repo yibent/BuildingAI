@@ -5,6 +5,7 @@ import {
     XIAOZHI_MCP_TOOL_CALLED_EVENT,
     type XiaozhiMcpToolCalledEvent,
 } from "../organization/services/xiaozhi-mcp.service";
+import { matchesCallbackAction, mergeCallbackPayload } from "./workflow-callback";
 
 export type WorkflowWaitEvent = {
     triggerId: string;
@@ -119,9 +120,9 @@ function matchesWaitFilter(filter: WorkflowWaitFilter, event: WorkflowWaitEvent)
     if (filter.projectId && event.projectId && event.projectId !== filter.projectId) {
         return false;
     }
-    if (filter.expectedDataPath || filter.expectedValue) {
-        const got = readPath(event.data, filter.expectedDataPath ?? "");
-        if (filter.expectedDataPath && got === undefined) return false;
+    if (filter.expectedDataPath) {
+        const got = readPath(event.data, filter.expectedDataPath);
+        if (got === undefined) return false;
         if (
             filter.expectedValue !== undefined &&
             filter.expectedValue !== "" &&
@@ -129,6 +130,10 @@ function matchesWaitFilter(filter: WorkflowWaitFilter, event: WorkflowWaitEvent)
         ) {
             return false;
         }
+        return true;
+    }
+    if (filter.expectedValue !== undefined && filter.expectedValue !== "") {
+        return matchesCallbackAction(filter.expectedValue, mergeCallbackPayload(event.data));
     }
     return true;
 }

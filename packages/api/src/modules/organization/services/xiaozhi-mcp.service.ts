@@ -74,16 +74,22 @@ const CONNECT_TIMEOUT_MS = 12_000;
 const CONFIGURE_CONCURRENCY = 4;
 const WS_OPEN = 1;
 
+const LEGACY_DEFAULT_TOOL_DESCRIPTION =
+    "仅当学生已经完成老师要求的课堂任务时调用。调用后会通知课堂控制台，并记录完成摘要。";
+const LEGACY_DEFAULT_PROMPT_TEMPLATE =
+    "当用户已经完成本次课堂任务时，必须调用 MCP 工具 {tool_name}。task_key 填写老师给出的任务标识，summary 简要说明完成内容；有明确评分依据时再填写 score。只有确认任务完成后才能调用，不要提前调用或重复调用。";
+const LEGACY_DEFAULT_TOOL_TITLE = "报告课堂任务完成";
+
 const DEFAULT_TOOL_SETTINGS = {
     toolName: "classroom_report_completion",
-    toolTitle: "报告课堂任务完成",
+    toolTitle: "回传任务结果",
     toolDescription:
-        "仅当学生已经完成老师要求的课堂任务时调用。调用后会通知课堂控制台，并记录完成摘要。",
+        "向主机回传当前任务的结果。课堂完成、工作流等待选择或答案时都调用这个工具。action 填写当前约定的事件名，其余参数按角色提示词填写；课堂完成时再写 summary。",
     taskKeyDescription: "老师给出的任务标识；没有明确标识时可以省略",
-    summaryDescription: "学生完成内容的简短摘要",
+    summaryDescription: "学生完成内容的简短摘要；课堂完成时填写",
     scoreDescription: "有明确评分依据时填写 0 到 100 的得分",
     promptTemplate:
-        "当用户已经完成本次课堂任务时，必须调用 MCP 工具 {tool_name}。task_key 填写老师给出的任务标识，summary 简要说明完成内容；有明确评分依据时再填写 score。只有确认任务完成后才能调用，不要提前调用或重复调用。",
+        "当你需要向主机回传结果时，必须调用 MCP 工具 {tool_name}。action 填写当前任务约定的事件名，其它字段以角色提示词为准。课堂任务完成时再填写 summary。不要编造未发生的结果，也不要提前或重复调用。",
 } as const;
 
 export type XiaozhiMcpToolSettingsValues = {
@@ -95,6 +101,38 @@ export type XiaozhiMcpToolSettingsValues = {
     scoreDescription: string;
     promptTemplate: string;
 };
+
+function coerceToolSettings(row: {
+    toolName?: string | null;
+    toolTitle?: string | null;
+    toolDescription?: string | null;
+    taskKeyDescription?: string | null;
+    summaryDescription?: string | null;
+    scoreDescription?: string | null;
+    promptTemplate?: string | null;
+}): XiaozhiMcpToolSettingsValues {
+    const toolTitle =
+        !row.toolTitle || row.toolTitle === LEGACY_DEFAULT_TOOL_TITLE
+            ? DEFAULT_TOOL_SETTINGS.toolTitle
+            : row.toolTitle;
+    const toolDescription =
+        !row.toolDescription || row.toolDescription === LEGACY_DEFAULT_TOOL_DESCRIPTION
+            ? DEFAULT_TOOL_SETTINGS.toolDescription
+            : row.toolDescription;
+    const promptTemplate =
+        !row.promptTemplate || row.promptTemplate === LEGACY_DEFAULT_PROMPT_TEMPLATE
+            ? DEFAULT_TOOL_SETTINGS.promptTemplate
+            : row.promptTemplate;
+    return {
+        toolName: row.toolName || DEFAULT_TOOL_SETTINGS.toolName,
+        toolTitle,
+        toolDescription,
+        taskKeyDescription: row.taskKeyDescription || DEFAULT_TOOL_SETTINGS.taskKeyDescription,
+        summaryDescription: row.summaryDescription || DEFAULT_TOOL_SETTINGS.summaryDescription,
+        scoreDescription: row.scoreDescription || DEFAULT_TOOL_SETTINGS.scoreDescription,
+        promptTemplate,
+    };
+}
 
 function mcpEndpointBase() {
     return process.env.XIAOZHI_MCP_ENDPOINT_BASE || "wss://api.xiaozhi.me/mcp/";
@@ -404,15 +442,7 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
             where: organizationId ? { organizationId } : { organizationId: IsNull(), ownerUserId },
         });
         if (!row) return { ...DEFAULT_TOOL_SETTINGS };
-        return {
-            toolName: row.toolName || DEFAULT_TOOL_SETTINGS.toolName,
-            toolTitle: row.toolTitle || DEFAULT_TOOL_SETTINGS.toolTitle,
-            toolDescription: row.toolDescription || DEFAULT_TOOL_SETTINGS.toolDescription,
-            taskKeyDescription: row.taskKeyDescription || DEFAULT_TOOL_SETTINGS.taskKeyDescription,
-            summaryDescription: row.summaryDescription || DEFAULT_TOOL_SETTINGS.summaryDescription,
-            scoreDescription: row.scoreDescription || DEFAULT_TOOL_SETTINGS.scoreDescription,
-            promptTemplate: row.promptTemplate || DEFAULT_TOOL_SETTINGS.promptTemplate,
-        };
+        return coerceToolSettings(row);
     }
 
     private async updateStatus(
@@ -946,6 +976,18 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
             inputSchema: {
                 type: "object",
                 properties: {
+                    action: {
+                        type: "string",
+                        maxLength: 64,
+                        description:
+                            "事件名。工作流按角色提示词填写，例如 choose_puzzle、submit_answer；课堂完成可填 complete。",
+                    },
+                    data: {
+                        type: "object",
+                        additionalProperties: true,
+                        description:
+                            "可选。自由载荷。也可以把字段直接放在顶层，例如 game、answer。",
+                    },
                     task_key: {
                         type: "string",
                         maxLength: 100,
@@ -953,7 +995,6 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
                     },
                     summary: {
                         type: "string",
-                        minLength: 1,
                         maxLength: 300,
                         description: settings.summaryDescription,
                     },
@@ -964,8 +1005,7 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
                         description: settings.scoreDescription,
                     },
                 },
-                required: ["summary"],
-                additionalProperties: false,
+                additionalProperties: true,
             },
             annotations: {
                 title: settings.toolTitle,
@@ -1058,12 +1098,18 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
             return;
         }
         const args = (params.arguments || {}) as Record<string, unknown>;
+        const action = typeof args.action === "string" ? args.action.trim() : "";
         const summary = typeof args.summary === "string" ? args.summary.trim() : "";
         const taskKey = typeof args.task_key === "string" ? args.task_key.trim() : "";
         const score =
             typeof args.score === "number" && Number.isFinite(args.score) ? args.score : null;
-        if (!summary || summary.length > 300 || taskKey.length > 100) {
-            this.sendError(socket, id, -32602, "summary 为必填（1-300字符），task_key 最长100字符");
+        if (action.length > 64 || summary.length > 300 || taskKey.length > 100) {
+            this.sendError(
+                socket,
+                id,
+                -32602,
+                "action 最长 64 字符，summary 最长 300 字符，task_key 最长 100 字符",
+            );
             return;
         }
         if (score !== null && (score < 0 || score > 100)) {
@@ -1071,16 +1117,22 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        const looksLikeClassroom =
+            Boolean(summary) && (!action || action === "complete" || action === "completion");
+
         try {
-            const ack = await this.reportCompletion(
-                state.snapshot,
-                { taskKey, summary, score },
-                "mcp",
-            );
+            const ack = looksLikeClassroom
+                ? await this.reportCompletion(
+                      state.snapshot,
+                      { taskKey, summary, score },
+                      "mcp",
+                  )
+                : { accepted: true, eventId: null, reason: "callback" };
             const response = {
                 ok: ack.accepted,
                 event_id: ack.eventId || null,
                 accepted: ack.accepted,
+                action: action || null,
                 reason: ack.reason || null,
             };
             this.sendResult(socket, id, {
@@ -1216,21 +1268,24 @@ export class XiaozhiMcpService {
 
     private toPublicSettings(row: XiaozhiMcpSettings | null) {
         const values: XiaozhiMcpToolSettingsValues = row
-            ? {
-                  toolName: row.toolName,
-                  toolTitle: row.toolTitle,
-                  toolDescription: row.toolDescription,
-                  taskKeyDescription: row.taskKeyDescription,
-                  summaryDescription: row.summaryDescription,
-                  scoreDescription: row.scoreDescription,
-                  promptTemplate: row.promptTemplate,
-              }
+            ? coerceToolSettings(row)
             : { ...DEFAULT_TOOL_SETTINGS };
         return {
             ...values,
             promptSnippet: values.promptTemplate.replaceAll("{tool_name}", values.toolName),
             updatedAt: row?.updatedAt ?? null,
         };
+    }
+
+    async resolveCallbackToolName(agentBindingId: string): Promise<string> {
+        const agent = await this.agentRepository.findOne({ where: { id: agentBindingId } });
+        if (!agent) return DEFAULT_TOOL_SETTINGS.toolName;
+        const row = await this.settingsRepository.findOne({
+            where: agent.organizationId
+                ? { organizationId: agent.organizationId }
+                : { organizationId: IsNull(), ownerUserId: agent.ownerUserId },
+        });
+        return this.toPublicSettings(row).toolName || DEFAULT_TOOL_SETTINGS.toolName;
     }
 
     async updateSettings(
@@ -1268,8 +1323,9 @@ export class XiaozhiMcpService {
     /**
      * Make sure this CubeCat has a live outbound MCP socket to
      * `wss://api.xiaozhi.me/mcp/?token=…`. CubeCat talks to Xiaozhi; Xiaozhi
-     * forwards tools/list and tools/call to us on that socket. Webhook nodes
-     * register tools on that connection.
+     * forwards tools/list and tools/call to us on that socket. The builtin
+     * callback tool is always on that list; new conversations must start after
+     * the socket is up, because Xiaozhi will not pick up mid-chat tool changes.
      */
     async ensureAgentConnection(userId: string, agentBindingId: string) {
         const agent = await this.agentRepository.findOne({ where: { id: agentBindingId } });
