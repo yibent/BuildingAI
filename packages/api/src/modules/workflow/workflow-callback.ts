@@ -116,9 +116,17 @@ export function buildWebhookCallbackInstruction(input: {
     if (description) lines.push(description);
     lines.push(`调用参数示例：\n${JSON.stringify(example, null, 2)}`);
     lines.push(
-        "只调用这个常驻工具，不要再找其它工具名。只在确认对应事情已经发生后调用一次，不要提前或重复调用。",
+        "只调用这个常驻工具，不要再找其它工具名。调用后必须立刻停止说话，安静等待工具返回；返回内容是设备上的真实结果，请据此继续回答，不要编造，也不要提前或重复调用。",
     );
     return lines.join("\n");
+}
+
+/** Turn a Lua node output into the text Xiaozhi should treat as the tool result. */
+export function formatLuaResultForXiaozhi(output: Record<string, unknown>): string {
+    const message = asText(output.message);
+    const briefing = asText(output.briefing);
+    const body = message || briefing || JSON.stringify(output);
+    return `设备已经执行完毕。请根据下面的结果立刻向小朋友说话，不要再调用工具。\n${body}`;
 }
 
 export function appendWebhookInstructions(prompt: string, instructions: string[]): string {

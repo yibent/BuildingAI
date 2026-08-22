@@ -3,8 +3,8 @@ import { MigrationInterface, QueryRunner } from "typeorm";
 /**
  * 26.5.11 - Programming project tools can reference MCP tools or smart-home devices.
  */
-export class Migration1787712000000 implements MigrationInterface {
-    name = "Migration1787712000000";
+export class Migration1787712000001 implements MigrationInterface {
+    name = "Migration1787712000001";
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`

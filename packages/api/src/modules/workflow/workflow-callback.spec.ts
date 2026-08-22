@@ -3,6 +3,7 @@ import {
     appendWebhookInstructions,
     buildWebhookCallbackInstruction,
     collectDownstreamWebhookNodes,
+    formatLuaResultForXiaozhi,
     matchesCallbackAction,
     mergeCallbackPayload,
     webhookActionName,
@@ -19,8 +20,7 @@ describe("workflow callback helpers", () => {
         expect(host.map((node) => node.id)).toEqual(["webhook_choose_1"]);
         expect(webhookActionName(host[0])).toBe("choose_puzzle");
 
-        const adapt = collectDownstreamWebhookNodes(schema, "agent_adapt");
-        expect(adapt.map((node) => node.id)).toEqual(["webhook_choose_2"]);
+        expect(collectDownstreamWebhookNodes(schema, "lua_deal_1")).toEqual([]);
     });
 
     it("writes the shared MCP tool name and action into the prompt snippet", () => {
@@ -37,7 +37,18 @@ describe("workflow callback helpers", () => {
         expect(text).toContain("classroom_report_completion");
         expect(text).toContain('action 必须填 "choose_puzzle"');
         expect(text).toContain('"game": "caesar"');
+        expect(text).toContain("停止说话");
+        expect(text).toContain("等待工具返回");
         expect(appendWebhookInstructions("你是馆长。", [text])).toContain("【回传】");
+    });
+
+    it("turns a Lua game result into the text Xiaozhi should speak next", () => {
+        expect(
+            formatLuaResultForXiaozhi({
+                action: "deal",
+                message: "过关了！接住小星星拿到 3 分。",
+            }),
+        ).toContain("过关了！接住小星星拿到 3 分。");
     });
 
     it("matches callback actions and flattens nested data", () => {

@@ -3,8 +3,8 @@ import { MigrationInterface, QueryRunner } from "typeorm";
 /**
  * 26.5.0 — 讲台（Podium）：班级应用授权、班级作业与提交、班级 AI 额度池。
  */
-export class Migration1785283200000 implements MigrationInterface {
-    name = "Migration1785283200000";
+export class Migration1785283200001 implements MigrationInterface {
+    name = "Migration1785283200001";
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);

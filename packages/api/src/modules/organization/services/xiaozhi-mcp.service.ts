@@ -89,7 +89,7 @@ const DEFAULT_TOOL_SETTINGS = {
     summaryDescription: "学生完成内容的简短摘要；课堂完成时填写",
     scoreDescription: "有明确评分依据时填写 0 到 100 的得分",
     promptTemplate:
-        "当你需要向主机回传结果时，必须调用 MCP 工具 {tool_name}。action 填写当前任务约定的事件名，其它字段以角色提示词为准。课堂任务完成时再填写 summary。不要编造未发生的结果，也不要提前或重复调用。",
+        "当你需要向主机回传结果时，必须调用 MCP 工具 {tool_name}。action 填写当前任务约定的事件名，其它字段以角色提示词为准。课堂任务完成时再填写 summary。调用后停止说话并等待工具返回，再根据返回内容继续回答。不要编造未发生的结果，也不要提前或重复调用。",
 } as const;
 
 export type XiaozhiMcpToolSettingsValues = {
@@ -228,6 +228,13 @@ type ExposedTool = {
     };
 };
 
+type ParkedCallback = {
+    agentBindingId: string;
+    socket: GatewaySocket;
+    id: JsonRpcId;
+    timer: NodeJS.Timeout;
+};
+
 type ConnectorState = {
     connectionId: string;
     cancelled: boolean;
@@ -246,6 +253,8 @@ type ConnectorState = {
 
 /** Ceiling for one passthrough tools/call round trip. */
 const BUILDING_TOOL_CALL_TIMEOUT_MS = 30_000;
+/** Hold a Xiaozhi callback until Lua finishes (covers a 40s game plus buffer). */
+const WORKFLOW_CALLBACK_WAIT_MS = 90_000;
 
 /**
  * Long-lived MCP gateway. For every enabled connection it keeps a WebSocket
@@ -260,6 +269,7 @@ const BUILDING_TOOL_CALL_TIMEOUT_MS = 30_000;
 export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(XiaozhiMcpGatewayService.name);
     private readonly connectors = new Map<string, ConnectorState>();
+    private readonly parkedCallbacks = new Map<string, ParkedCallback>();
     private readonly reconnectDelays = DEFAULT_RECONNECT_DELAYS;
     private unsubscribeToolRegistry: (() => void) | null = null;
     private unsubscribeWebhookRegistry: (() => void) | null = null;
@@ -582,6 +592,7 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
         socket.addEventListener("close", () => {
             clearTimeout(timeout);
             if (state.socket === socket) state.socket = null;
+            this.dropParkedForSocket(socket);
             if (state.cancelled) return;
             this.scheduleReconnect(state, lastSocketError);
         });
@@ -630,6 +641,62 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
 
     private sendError(socket: GatewaySocket, id: JsonRpcId, code: number, message: string) {
         this.sendMessage(socket, { id, error: { code, message } });
+    }
+
+    /**
+     * Keep Xiaozhi in the MCP tool-call wait until Lua (or a timeout) supplies
+     * the real result. The workflow webhook is unblocked separately via
+     * {@link notifyToolCalled}.
+     */
+    private parkWorkflowCallback(state: ConnectorState, socket: GatewaySocket, id: JsonRpcId) {
+        const agentBindingId = state.snapshot?.agentBindingId;
+        if (!agentBindingId) {
+            this.sendError(socket, id, -32603, "MCP 连接尚未就绪");
+            return;
+        }
+        this.dropParkedCallback(agentBindingId, {
+            content: [{ type: "text", text: "已有新的回传，请忽略上一次等待。" }],
+            isError: false,
+        });
+        const timer = setTimeout(() => {
+            this.completeParkedCallback(agentBindingId, {
+                content: [
+                    {
+                        type: "text",
+                        text: "设备处理超时。请向小朋友说明可以稍后再试。",
+                    },
+                ],
+                isError: false,
+            });
+        }, WORKFLOW_CALLBACK_WAIT_MS);
+        this.parkedCallbacks.set(agentBindingId, { agentBindingId, socket, id, timer });
+        this.logger.log(`Parked Xiaozhi MCP callback for ${agentBindingId}`);
+    }
+
+    completeParkedCallback(agentBindingId: string, result: unknown): boolean {
+        const parked = this.parkedCallbacks.get(agentBindingId);
+        if (!parked) return false;
+        this.parkedCallbacks.delete(agentBindingId);
+        clearTimeout(parked.timer);
+        this.sendResult(parked.socket, parked.id, result);
+        this.logger.log(`Completed parked Xiaozhi MCP callback for ${agentBindingId}`);
+        return true;
+    }
+
+    private dropParkedCallback(agentBindingId: string, result?: unknown) {
+        const parked = this.parkedCallbacks.get(agentBindingId);
+        if (!parked) return;
+        this.parkedCallbacks.delete(agentBindingId);
+        clearTimeout(parked.timer);
+        if (result) this.sendResult(parked.socket, parked.id, result);
+    }
+
+    private dropParkedForSocket(socket: GatewaySocket) {
+        for (const [key, parked] of this.parkedCallbacks) {
+            if (parked.socket !== socket) continue;
+            clearTimeout(parked.timer);
+            this.parkedCallbacks.delete(key);
+        }
     }
 
     /**
@@ -790,22 +857,14 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
         }
         const args = (params.arguments || {}) as Record<string, unknown>;
         try {
-            const result = await this.workflowWebhookTools.call(
+            await this.workflowWebhookTools.call(
                 snapshot.agentBindingId,
                 sessionId,
                 exposed.toolName,
                 args,
             );
-            const text =
-                typeof result === "string" ? result : JSON.stringify(result ?? { received: true });
-            this.sendResult(socket, id, {
-                content: [{ type: "text", text }],
-                ...(typeof result === "object" && result !== null
-                    ? { structuredContent: result }
-                    : {}),
-                isError: false,
-            });
             this.notifyToolCalled(state, String(params.name || exposed.toolName), args);
+            this.parkWorkflowCallback(state, socket, id);
         } catch (error) {
             this.sendError(socket, id, -32603, safeErrorMessage(error));
         }
@@ -1121,13 +1180,16 @@ export class XiaozhiMcpGatewayService implements OnModuleInit, OnModuleDestroy {
             Boolean(summary) && (!action || action === "complete" || action === "completion");
 
         try {
-            const ack = looksLikeClassroom
-                ? await this.reportCompletion(
-                      state.snapshot,
-                      { taskKey, summary, score },
-                      "mcp",
-                  )
-                : { accepted: true, eventId: null, reason: "callback" };
+            if (!looksLikeClassroom) {
+                this.notifyToolCalled(state, state.settings.toolName, args);
+                this.parkWorkflowCallback(state, socket, id);
+                return;
+            }
+            const ack = await this.reportCompletion(
+                state.snapshot,
+                { taskKey, summary, score },
+                "mcp",
+            );
             const response = {
                 ok: ack.accepted,
                 event_id: ack.eventId || null,
@@ -1275,6 +1337,22 @@ export class XiaozhiMcpService {
             promptSnippet: values.promptTemplate.replaceAll("{tool_name}", values.toolName),
             updatedAt: row?.updatedAt ?? null,
         };
+    }
+
+    /**
+     * Finish a parked Xiaozhi MCP call so the model resumes with this payload
+     * as the tool result (appended to the live conversation).
+     */
+    completeWorkflowCallback(
+        agentBindingId: string,
+        text: string,
+        output: Record<string, unknown> = {},
+    ): boolean {
+        return this.gateway.completeParkedCallback(agentBindingId, {
+            content: [{ type: "text", text }],
+            structuredContent: output,
+            isError: false,
+        });
     }
 
     async resolveCallbackToolName(agentBindingId: string): Promise<string> {

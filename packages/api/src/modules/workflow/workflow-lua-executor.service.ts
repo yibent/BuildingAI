@@ -6,6 +6,8 @@ import { Injectable } from "@nestjs/common";
 import { LuaDeviceGatewayService } from "../lua-device/lua-device-gateway.service";
 import { LuaModuleService } from "../lua/lua-module.service";
 import { LuaRuntimeService } from "../lua/lua-runtime.service";
+import { XiaozhiMcpService } from "../organization/services/xiaozhi-mcp.service";
+import { formatLuaResultForXiaozhi } from "./workflow-callback";
 import { WorkflowRuntimeDeviceService } from "./workflow-runtime-device.service";
 
 type RuntimeContext = NonNullable<LuaExecutorInput["runtimeContext"]>;
@@ -38,6 +40,7 @@ export class WorkflowLuaExecutorService {
         private readonly luaRuntimeService: LuaRuntimeService,
         private readonly luaDeviceGatewayService: LuaDeviceGatewayService,
         private readonly runtimeDeviceService: WorkflowRuntimeDeviceService,
+        private readonly mcpService: XiaozhiMcpService,
     ) {}
 
     async execute(input: LuaExecutorInput): Promise<Record<string, unknown>> {
@@ -73,14 +76,46 @@ export class WorkflowLuaExecutorService {
             ).output;
         }
 
-        return this.executeForTarget(
-            source,
-            moduleName,
-            moduleId,
-            input.userId,
-            input.inputs,
-            context,
-        );
+        try {
+            const output = await this.executeForTarget(
+                source,
+                moduleName,
+                moduleId,
+                input.userId,
+                input.inputs,
+                context,
+            );
+            this.completeXiaozhiCallback(context, output);
+            return output;
+        } catch (error) {
+            this.completeXiaozhiCallback(context, {
+                action: "error",
+                message: error instanceof Error ? error.message : String(error),
+                correct: false,
+            });
+            throw error;
+        }
+    }
+
+    private resolveAgentId(context?: RuntimeContext): string | undefined {
+        const snapshot = isPublishedSnapshot(context?.publishedSnapshot)
+            ? context?.publishedSnapshot
+            : undefined;
+        const fromSnapshot = snapshot?.runtime.xiaozhiAgentId;
+        const fromContext = context?.xiaozhiAgentId;
+        if (typeof fromSnapshot === "string" && fromSnapshot) return fromSnapshot;
+        if (typeof fromContext === "string" && fromContext) return fromContext;
+        return undefined;
+    }
+
+    private completeXiaozhiCallback(
+        context: RuntimeContext | undefined,
+        output: Record<string, unknown>,
+    ) {
+        if (output.action === "announce") return;
+        const agentId = this.resolveAgentId(context);
+        if (!agentId) return;
+        this.mcpService.completeWorkflowCallback(agentId, formatLuaResultForXiaozhi(output), output);
     }
 
     private async executeForTarget(

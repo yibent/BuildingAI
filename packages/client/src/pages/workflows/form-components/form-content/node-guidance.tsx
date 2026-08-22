@@ -97,7 +97,7 @@ const NODE_GUIDANCE: Partial<Record<string, NodeGuidanceContent>> = {
       "填写事件名和参数；调用说明会自动写入前面的「设置智能体」提示词",
       "从「收到数据」连到下一步；可选地给「错误」接超时处理",
     ],
-    result: "CubeCat 调用常驻回传工具后，参数会出现在输出里。",
+    result: "CubeCat 调用常驻回传工具后会进入等待；Lua 跑完后结果会回到对话里，小智再继续说。",
     example: "事件名填 choose_puzzle，前面的智能体提示词会要求它回传 game。",
   },
   [WorkflowNodeType.Wait]: {
