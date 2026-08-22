@@ -2,24 +2,25 @@ import SwiftUI
 
 struct SmartHomeDevicesView: View {
     @EnvironmentObject private var model: AppModel
-    let accountId: String?
-    @State private var selectedDevice: XiaomiDevice?
+    @State private var selectedDevice: HomeAssistantDevice?
     @State private var category = "全部"
 
-    private var devices: [XiaomiDevice] {
-        let source = accountId == nil ? model.devices : model.devices.filter { $0.accountId == accountId }
-        guard category != "全部" else { return source }
-        return source.filter { $0.categoryLabel == category }
+    private var devices: [HomeAssistantDevice] {
+        guard category != "全部" else { return model.devices }
+        return model.devices.filter { $0.categoryLabel == category }
     }
 
     private var categories: [String] {
-        ["全部"] + Array(Set(model.devices.filter { accountId == nil || $0.accountId == accountId }.map(\.categoryLabel))).sorted()
+        ["全部"] + Array(Set(model.devices.map(\.categoryLabel))).sorted()
     }
 
     var body: some View {
         Group {
-            if devices.isEmpty { EmptyStateView(icon: "lightbulb.slash", title: "没有设备", message: "请先在“我的智能家居”中导入并同步小米账号。") }
-            else {
+            if model.homeAssistant == nil {
+                EmptyStateView(icon: "homekit", title: "尚未连接", message: "请先在网页设置中连接 Home Assistant。")
+            } else if devices.isEmpty {
+                EmptyStateView(icon: "lightbulb.slash", title: "没有设备", message: "先在 Home Assistant 里接入灯，再点同步。")
+            } else {
                 List {
                     if categories.count > 1 {
                         Section {
@@ -39,7 +40,7 @@ struct SmartHomeDevicesView: View {
                 .listStyle(.insetGrouped)
             }
         }
-        .navigationTitle(accountId == nil ? "全部设备" : "设备")
+        .navigationTitle("全部设备")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { Task { await model.loadSmartHome() } } label: { Image(systemName: "arrow.clockwise") }
@@ -53,7 +54,7 @@ struct SmartHomeDevicesView: View {
 }
 
 private struct DeviceRow: View {
-    let device: XiaomiDevice
+    let device: HomeAssistantDevice
 
     var body: some View {
         HStack(spacing: 13) {
@@ -63,7 +64,7 @@ private struct DeviceRow: View {
                 .background((device.online ? Color.orange : Color.secondary).opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 4) {
                 Text(device.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text([device.homeName, device.roomName, device.categoryLabel].compactMap { $0 }.joined(separator: " · "))
+                Text([device.categoryLabel, device.areaName].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

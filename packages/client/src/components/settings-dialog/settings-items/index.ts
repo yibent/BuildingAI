@@ -6,5 +6,4 @@ export { SubscribeSetting } from "./subscribe-setting";
 export { ToolsSetting } from "./tools-setting";
 export { WalletSetting } from "./wallet-setting";
 export { WorkspaceSetting } from "./workspace-setting";
-export { XiaomiHomeSetting } from "./xiaomi-home-setting";
-export { YeelightProSetting } from "./yeelight-pro-setting";
+export { HomeAssistantSetting } from "./home-assistant-setting";

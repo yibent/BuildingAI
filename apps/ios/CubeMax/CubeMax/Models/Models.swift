@@ -364,98 +364,72 @@ struct ChatMessage: Codable, Identifiable, Sendable {
     var text: String { message.parts.compactMap(\.renderedText).joined() }
 }
 
-struct XiaomiHomeAccount: Codable, Identifiable, Sendable {
+struct HomeAssistantInstance: Codable, Identifiable, Sendable {
     let id: String
     let label: String
-    let cloudServer: String
-    let cloudServerLabel: String
-    let upstreamUserId: String?
-    let nickname: String?
+    let baseUrl: String
+    let authMode: String
+    let username: String?
+    let haVersion: String?
+    let locationName: String?
     let status: String
-    let homes: [XiaomiHomeSummary]
     let deviceCount: Int
-    let onlineDeviceCount: Int
     let lastSyncAt: String?
     let lastError: String?
     let createdAt: String
     let updatedAt: String
+
+    var isActive: Bool { status == "active" }
+    var displayName: String { locationName?.isEmpty == false ? locationName! : label }
 }
 
-struct XiaomiHomeSummary: Codable, Identifiable, Sendable {
+struct HomeAssistantLightState: Codable, Hashable, Sendable {
+    let on: Bool
+    let brightness: Double?
+    let color: String?
+    let colorTemp: Double?
+    let colorMode: String?
+    let minKelvin: Double?
+    let maxKelvin: Double?
+    let supportedColorModes: [String]
+}
+
+struct HomeAssistantDevice: Codable, Identifiable, Sendable {
     let id: String
+    let instanceId: String
+    let provider: String
+    let entityId: String
+    let uniqueId: String?
     let name: String
-    let uid: String?
-    let roomCount: Int
-    let deviceCount: Int
-}
-
-struct XiaomiCapability: Codable, Identifiable, Hashable, Sendable {
-    let kind: String
-    let siid: Int
-    let piid: Int?
-    let aiid: Int?
-    let serviceName: String
-    let serviceDescription: String?
-    let name: String
-    let description: String?
-    let format: String?
-    let access: [String]?
-    let unit: String?
-    let valueRange: XiaomiValueRange?
-    let valueList: [XiaomiValueOption]?
-    let input: [XiaomiActionInput]?
-
-    var id: String { "\(kind)-\(siid)-\(piid ?? aiid ?? 0)" }
-    var canWrite: Bool { access?.contains("write") == true }
-}
-
-struct XiaomiValueRange: Codable, Hashable, Sendable {
-    let min: Double
-    let max: Double
-    let step: Double
-}
-
-struct XiaomiValueOption: Codable, Hashable, Identifiable, Sendable {
-    let value: JSONValue
-    let description: String
-    var id: String { value.prettyString }
-}
-
-struct XiaomiActionInput: Codable, Hashable, Sendable {
-    let piid: Int
-    let name: String
-    let description: String?
-    let format: String?
-    let valueRange: XiaomiValueRange?
-    let valueList: [XiaomiValueOption]?
-}
-
-struct XiaomiDevice: Codable, Identifiable, Sendable {
-    let id: String
-    let accountId: String
-    let did: String
-    let name: String
-    let model: String?
-    let urn: String?
-    let manufacturer: String?
-    let icon: String?
+    let domain: String
     let category: String
     let categoryLabel: String
+    let areaId: String?
+    let areaName: String?
     let online: Bool
-    let connectType: Int?
-    let homeId: String?
-    let homeName: String?
-    let roomId: String?
-    let roomName: String?
-    let capabilities: [XiaomiCapability]
-    let state: [String: JSONValue]
-    let metadata: [String: JSONValue]
+    let state: HomeAssistantLightState
     let lastStateAt: String?
     let createdAt: String
     let updatedAt: String
 
-    func stateValue(for capability: XiaomiCapability) -> JSONValue? {
-        guard let piid = capability.piid else { return nil }
-        return state["\(capability.siid).\(piid)"]
+    var supportsBrightness: Bool {
+        state.brightness != nil || state.supportedColorModes.contains(where: {
+            ["brightness", "white", "rgb", "rgbw", "rgbww", "hs", "xy", "color_temp"].contains($0)
+        })
     }
+
+    var supportsColor: Bool {
+        state.supportedColorModes.contains(where: { ["rgb", "rgbw", "rgbww", "hs", "xy"].contains($0) })
+    }
+
+    var supportsColorTemp: Bool {
+        state.supportedColorModes.contains("color_temp")
+    }
+}
+
+struct HomeAssistantLightCommand: Encodable, Sendable {
+    var on: Bool?
+    var brightness: Int?
+    var color: String?
+    var colorTemp: Int?
 }

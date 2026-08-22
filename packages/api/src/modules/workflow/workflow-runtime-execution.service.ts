@@ -39,6 +39,7 @@ import { WorkflowWaitExecutorService } from "./workflow-wait-executor.service";
 import { WorkflowWaitRegistry } from "./workflow-wait-registry.service";
 import { WorkflowWebhookExecutorService } from "./workflow-webhook-executor.service";
 import { WorkflowRuntimeDeviceService } from "./workflow-runtime-device.service";
+import { workflowNeedsCubeCat } from "./workflow-runtime-requirements";
 
 type WorkflowRuntimeJsModule = typeof import("@flowgram.ai/runtime-js");
 
@@ -106,12 +107,19 @@ export class WorkflowRuntimeExecutionService {
         dto: WorkflowRuntimeTaskDto,
         user: Pick<UserPlayground, "id">,
     ): Promise<TaskValidateOutput> {
-        const runtime = await this.loadConfiguredRuntime();
-        const taskDto = this.workflowEmbeddedExecutorService.prepareTaskDto(dto);
-        return runtime.TaskValidateAPI({
-            ...taskDto,
-            context: await this.resolveDraftContext(dto, user.id),
-        });
+        try {
+            const runtime = await this.loadConfiguredRuntime();
+            const taskDto = this.workflowEmbeddedExecutorService.prepareTaskDto(dto);
+            return runtime.TaskValidateAPI({
+                ...taskDto,
+                context: await this.resolveDraftContext(dto, user.id),
+            });
+        } catch (error) {
+            return {
+                valid: false,
+                errors: [error instanceof Error ? error.message : "工作流校验失败"],
+            };
+        }
     }
 
     async run(
@@ -299,6 +307,13 @@ export class WorkflowRuntimeExecutionService {
         projectId: string,
         snapshot: ProgrammingProjectPublishedSnapshot,
     ) {
+        if (!workflowNeedsCubeCat(snapshot.workflow.schema)) {
+            return {
+                userId,
+                projectId,
+                publishedSnapshot: snapshot,
+            };
+        }
         const context = {
             userId,
             projectId,
@@ -319,10 +334,22 @@ export class WorkflowRuntimeExecutionService {
 
     private async resolveDraftContext(dto: WorkflowRuntimeTaskDto, userId: string) {
         if (!dto.context?.projectId) return { userId };
+        const schema = parseWorkflowSchema(dto.schema);
+        if (!workflowNeedsCubeCat(schema)) {
+            return { userId, projectId: dto.context.projectId };
+        }
         const selection = await this.programmingProjectService.getRuntimeSelection(
             dto.context.projectId,
             userId,
         );
         return { userId, ...selection };
+    }
+}
+
+function parseWorkflowSchema(schema: string): unknown {
+    try {
+        return JSON.parse(schema);
+    } catch {
+        return {};
     }
 }

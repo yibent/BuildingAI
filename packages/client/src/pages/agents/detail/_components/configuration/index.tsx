@@ -439,7 +439,7 @@ export default function Configuration() {
 
   const handleOpenCubeCatPublish = useCallback(async () => {
     if (!config.rolePrompt.trim()) {
-      toast.error("请先填写角色设定，再发布到方糖猫");
+      toast.error("请先填写角色设定，再发布到设备");
       return;
     }
     const saved = await saveConfigRef.current(config);
@@ -529,7 +529,7 @@ export default function Configuration() {
                 disabled={!agentId || !agent || isSaving}
               >
                 <Radio />
-                发布到方糖猫
+                发布到设备
               </Button>
             </div>
           </div>

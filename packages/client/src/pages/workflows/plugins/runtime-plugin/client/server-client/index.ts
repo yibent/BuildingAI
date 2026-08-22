@@ -124,14 +124,18 @@ export class WorkflowRuntimeServerClient implements IRuntimeClient {
       const output = this.unwrapResponse<T>(payload);
 
       if (!response.ok || this.isError(output)) {
+        const message =
+          this.isError(output) && output.message ? output.message : options.errorMessage;
         console.error(options.errorMessage, output);
-        return options.fallbackValue;
+        if (options.fallbackValue !== undefined) return options.fallbackValue;
+        throw new Error(message);
       }
 
       return output;
     } catch (error) {
       console.error(error);
-      return options.fallbackValue;
+      if (options.fallbackValue !== undefined) return options.fallbackValue;
+      throw error instanceof Error ? error : new Error(options.errorMessage);
     }
   }
 

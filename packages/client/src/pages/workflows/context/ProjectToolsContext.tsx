@@ -1,11 +1,9 @@
 import {
   programmingProjectToolKey,
-  useAllXiaomiHomeDevicesQuery,
+  useHomeAssistantDevicesQuery,
   useMcpServersAllQuery,
-  useYeelightProDevicesQuery,
+  type HomeAssistantDevice,
   type ProgrammingProjectToolRef,
-  type XiaomiHomeDevice,
-  type YeelightProDevice,
 } from "@buildingai/services/web";
 import { nanoid } from "nanoid";
 import {
@@ -43,7 +41,7 @@ export type ProjectToolItem =
       inputSchema?: Record<string, unknown>;
     }
   | {
-      kind: "xiaomi" | "yeelight";
+      kind: "homeassistant";
       key: string;
       title: string;
       description: string;
@@ -51,7 +49,7 @@ export type ProjectToolItem =
       category: string;
       categoryLabel: string;
       online: boolean;
-      provider: "xiaomi" | "yeelight";
+      provider: "homeassistant";
     };
 
 type ProjectToolsContextValue = {
@@ -72,9 +70,7 @@ export function useProjectTools(): ProjectToolsContextValue {
 
 function selectedToolRefs(tools: ProgrammingProjectToolRef[]): ProgrammingProjectToolRef[] {
   return tools.map((tool) =>
-    tool.kind === "xiaomi" || tool.kind === "yeelight"
-      ? tool
-      : { ...tool, kind: "mcp" as const },
+    tool.kind === "homeassistant" ? tool : { ...tool, kind: "mcp" as const },
   );
 }
 
@@ -116,7 +112,7 @@ function createMcpRegistry(tool: Extract<ProjectToolItem, { kind: "mcp" }>): Flo
 }
 
 function createDeviceRegistry(
-  tool: Extract<ProjectToolItem, { kind: "xiaomi" | "yeelight" }>,
+  tool: Extract<ProjectToolItem, { kind: "homeassistant" }>,
 ): FlowNodeRegistry {
   return {
     type: `project_tool_${tool.key}`,
@@ -136,6 +132,7 @@ function createDeviceRegistry(
       return {
         id: `smarthome_${nanoid(5)}`,
         type: WorkflowNodeType.SmartHome,
+        meta: { position: { x: 400, y: 0 } },
         data: {
           title: tool.title,
           provider: tool.provider,
@@ -159,11 +156,15 @@ function createDeviceRegistry(
   };
 }
 
-function deviceDescription(device: { category: string; categoryLabel?: string; roomName?: string | null; homeName?: string | null; online: boolean }) {
-  const place = [device.roomName, device.homeName].filter(Boolean).join(" · ");
+function deviceDescription(device: {
+  category: string;
+  categoryLabel?: string;
+  areaName?: string | null;
+  online: boolean;
+}) {
   return [
     getCategoryLabel(device.category, device.categoryLabel),
-    place,
+    device.areaName,
     device.online ? "在线" : "离线",
   ]
     .filter(Boolean)
@@ -176,52 +177,25 @@ export const ProjectToolsProvider: FC<{ children: ReactNode }> = ({ children }) 
   const selected = selectedToolRefs(projectTools ?? []);
   const enabled = Boolean(project);
   const mcpQuery = useMcpServersAllQuery({ isDisabled: false }, { enabled });
-  const xiaomiQuery = useAllXiaomiHomeDevicesQuery(undefined, { enabled });
-  const yeelightQuery = useYeelightProDevicesQuery({ enabled });
+  const devicesQuery = useHomeAssistantDevicesQuery(undefined, { enabled });
 
   const tools = useMemo<ProjectToolItem[]>(() => {
-    const xiaomiById = new Map((xiaomiQuery.data ?? []).map((device) => [device.id, device]));
-    const yeelightById = new Map((yeelightQuery.data ?? []).map((device) => [device.id, device]));
+    const devicesById = new Map((devicesQuery.data ?? []).map((device) => [device.id, device]));
     const items: ProjectToolItem[] = [];
 
     for (const reference of selected) {
-      if (reference.kind === "xiaomi" && reference.deviceId) {
-        const device = xiaomiById.get(reference.deviceId) as XiaomiHomeDevice | undefined;
+      if (reference.kind === "homeassistant" && reference.deviceId) {
+        const device = devicesById.get(reference.deviceId) as HomeAssistantDevice | undefined;
         items.push({
-          kind: "xiaomi",
+          kind: "homeassistant",
           key: programmingProjectToolKey(reference),
-          title: device?.name || "米家设备",
-          description: device
-            ? deviceDescription(device)
-            : "米家设备",
+          title: device?.name || "Home Assistant 设备",
+          description: device ? deviceDescription(device) : "Home Assistant 设备",
           deviceId: reference.deviceId,
           category: device?.category || "other",
           categoryLabel: device?.categoryLabel || "其他设备",
           online: device?.online ?? false,
-          provider: "xiaomi",
-        });
-        continue;
-      }
-      if (reference.kind === "yeelight" && reference.deviceId) {
-        const device = yeelightById.get(reference.deviceId) as YeelightProDevice | undefined;
-        items.push({
-          kind: "yeelight",
-          key: programmingProjectToolKey(reference),
-          title: device?.name || "易来设备",
-          description: device
-            ? deviceDescription({
-                category: device.category,
-                categoryLabel: device.categoryLabel,
-                roomName: device.roomName,
-                homeName: device.houseName,
-                online: device.online,
-              })
-            : "易来设备",
-          deviceId: reference.deviceId,
-          category: device?.category || "light",
-          categoryLabel: device?.categoryLabel || "灯光",
-          online: device?.online ?? false,
-          provider: "yeelight",
+          provider: "homeassistant",
         });
         continue;
       }
@@ -240,7 +214,7 @@ export const ProjectToolsProvider: FC<{ children: ReactNode }> = ({ children }) 
       });
     }
     return items;
-  }, [mcpQuery.data, projectTools, xiaomiQuery.data, yeelightQuery.data]);
+  }, [devicesQuery.data, mcpQuery.data, projectTools]);
 
   const registries = useMemo(
     () =>
@@ -255,7 +229,7 @@ export const ProjectToolsProvider: FC<{ children: ReactNode }> = ({ children }) 
       value={{
         tools,
         registries,
-        isLoading: mcpQuery.isLoading || xiaomiQuery.isLoading || yeelightQuery.isLoading,
+        isLoading: mcpQuery.isLoading || devicesQuery.isLoading,
       }}
     >
       {children}

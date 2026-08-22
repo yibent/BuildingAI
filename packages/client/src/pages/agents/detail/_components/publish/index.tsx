@@ -5,17 +5,26 @@ import { Skeleton } from "@buildingai/ui/components/ui/skeleton";
 import { Switch } from "@buildingai/ui/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@buildingai/ui/components/ui/tabs";
 import type { LucideIcon } from "lucide-react";
-import { Copy, Earth, ExternalLink, FileCodeCorner, RefreshCw, SquareCode } from "lucide-react";
+import {
+  Copy,
+  Earth,
+  ExternalLink,
+  FileCodeCorner,
+  Radio,
+  RefreshCw,
+  SquareCode,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { QuickSubmitButton } from "@/components/assignments";
 
+import { CubeCatPublishDialog } from "../configuration/cubecat-publish-dialog";
 import { EmbedPublishDialog } from "./embed-publish-dialog";
 
-type PublishTab = "all" | "webapp";
-type PublishDialogType = "embed" | null;
+type PublishTab = "all" | "webapp" | "device";
+type PublishDialogType = "embed" | "device" | null;
 
 function joinUrl(base: string, path: string): string {
   const normalizedBase = base.replace(/\/+$/, "");
@@ -261,6 +270,14 @@ export default function Publish() {
     [handleCopy],
   );
 
+  const handleOpenDevicePublish = useCallback(() => {
+    if (!agent?.rolePrompt?.trim()) {
+      toast.error("请先在编排页填写角色设定，再发布到设备");
+      return;
+    }
+    setDialogType("device");
+  }, [agent?.rolePrompt]);
+
   return (
     <>
       <div className="flex h-full flex-col overflow-y-auto px-6 py-4">
@@ -271,6 +288,7 @@ export default function Publish() {
               <TabsList className="w-fit rounded-xl">
                 <TabsTrigger value="all">全部</TabsTrigger>
                 <TabsTrigger value="webapp">WebAPP</TabsTrigger>
+                <TabsTrigger value="device">设备</TabsTrigger>
               </TabsList>
             </Tabs>
             {/* 学生在这里可以把当前智能体直接交给老师；没有可提交的任务时不渲染。 */}
@@ -299,6 +317,26 @@ export default function Publish() {
             </div>
           ) : (
             <>
+              {(activeTab === "all" || activeTab === "device") && (
+                <section className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold">设备</h2>
+                    <Badge variant="secondary">1</Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                    <ChannelCard
+                      icon={Radio}
+                      title="发布到设备"
+                      description="把当前智能体的角色设定同步到方糖猫。打开后会自动填入提示词，还可以继续设置音色、模型和记忆。"
+                      onOpen={handleOpenDevicePublish}
+                      primaryActionLabel="发布"
+                      primaryActionIcon={Radio}
+                      onPrimaryAction={handleOpenDevicePublish}
+                    />
+                  </div>
+                </section>
+              )}
+
               {(activeTab === "all" || activeTab === "webapp") && (
                 <section className="space-y-4">
                   <div className="flex items-center gap-2">
@@ -353,6 +391,14 @@ export default function Publish() {
         mobileScriptCode={mobileFloatingEmbedCode}
         onPublish={() => {}}
         onCopy={(value, successMessage) => void handleCopyPublishedValue(value, successMessage)}
+      />
+      <CubeCatPublishDialog
+        open={dialogType === "device"}
+        onOpenChange={(open) => setDialogType(open ? "device" : null)}
+        buildingAgentId={agentId}
+        buildingAgentName={agent?.name}
+        promptPreview={agent?.rolePrompt || ""}
+        openingStatement={agent?.openingStatement || ""}
       />
     </>
   );

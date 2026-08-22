@@ -654,6 +654,12 @@ export function usePublishBuildingAgentToCubeCatMutation(buildingAgentId: string
             model: string;
             voice: string;
             language?: string;
+            character?: string;
+            asrSpeed?: "slow" | "normal" | "fast";
+            ttsSpeechSpeed?: "slow" | "normal" | "fast";
+            ttsPitch?: number;
+            memoryType?: "OFF" | "SHORT_TERM" | "LONG_TERM";
+            teenMode?: boolean;
         }) =>
             apiHttpClient.post(
                 `/organizations/xiaozhi/building-agents/${buildingAgentId}/publish`,

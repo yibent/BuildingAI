@@ -325,7 +325,7 @@ export const ConversationNodeList: FC<NodeListProps> = ({ onSelect, containerNod
                   onClick={(event) => {
                     const json = registry.onAdd?.(context);
                     onSelect({
-                      nodeType: registry.type as string,
+                      nodeType: (json?.type ?? registry.type) as string,
                       selectEvent: event,
                       nodeJSON: json,
                     });

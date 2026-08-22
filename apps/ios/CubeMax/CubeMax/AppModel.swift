@@ -12,8 +12,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var triggers: [ProgrammingTriggerItem] = []
     @Published private(set) var projects: [ProgrammingProject] = []
     @Published private(set) var conversations: [ConversationRecord] = []
-    @Published private(set) var accounts: [XiaomiHomeAccount] = []
-    @Published private(set) var devices: [XiaomiDevice] = []
+    @Published private(set) var homeAssistant: HomeAssistantInstance?
+    @Published private(set) var devices: [HomeAssistantDevice] = []
     @Published private(set) var cubeCatDevices: [XiaozhiCubeCatDevice] = []
     @Published private(set) var buildingAgents: [BuildingAgentSummary] = []
     @Published private(set) var isBootstrapping = true
@@ -336,46 +336,27 @@ final class AppModel: ObservableObject {
 
     func loadSmartHome() async {
         do {
-            async let loadedAccounts = api.xiaomiAccounts()
-            async let loadedDevices = api.xiaomiDevices()
-            accounts = try await loadedAccounts
+            async let loadedInstance = api.homeAssistantInstance()
+            async let loadedDevices = api.homeAssistantDevices()
+            homeAssistant = try await loadedInstance
             devices = try await loadedDevices
         } catch { errorMessage = localized(error) }
     }
 
-    func importXiaomiCredentials(_ credentials: String) async throws {
-        _ = try await api.importXiaomiCredentials(credentials)
+    func syncHomeAssistant() async throws {
+        homeAssistant = try await api.syncHomeAssistant()
         await loadSmartHome()
     }
 
-    func syncAccount(_ account: XiaomiHomeAccount) async throws {
-        _ = try await api.syncXiaomiAccount(account.id)
-        await loadSmartHome()
+    func refreshDevice(_ device: HomeAssistantDevice) async throws {
+        replaceDevice(try await api.refreshHomeAssistantDevice(device.id))
     }
 
-    func deleteAccount(_ account: XiaomiHomeAccount) async throws {
-        try await api.deleteXiaomiAccount(account.id)
-        await loadSmartHome()
+    func controlDevice(_ device: HomeAssistantDevice, command: HomeAssistantLightCommand) async throws {
+        replaceDevice(try await api.controlHomeAssistantDevice(device.id, command: command))
     }
 
-    func refreshDevice(_ device: XiaomiDevice) async throws {
-        let updated = try await api.refreshXiaomiDevice(device.id)
-        replaceDevice(updated)
-    }
-
-    func setProperty(device: XiaomiDevice, capability: XiaomiCapability, value: JSONValue) async throws {
-        guard let piid = capability.piid else { return }
-        let updated = try await api.setXiaomiProperty(device.id, siid: capability.siid, piid: piid, value: value)
-        replaceDevice(updated)
-    }
-
-    func executeAction(device: XiaomiDevice, capability: XiaomiCapability, inputs: [JSONValue] = []) async throws {
-        guard let aiid = capability.aiid else { return }
-        let updated = try await api.executeXiaomiAction(device.id, siid: capability.siid, aiid: aiid, inputs: inputs)
-        replaceDevice(updated)
-    }
-
-    private func replaceDevice(_ device: XiaomiDevice) {
+    private func replaceDevice(_ device: HomeAssistantDevice) {
         if let index = devices.firstIndex(where: { $0.id == device.id }) { devices[index] = device }
         else { devices.append(device) }
     }
@@ -387,7 +368,7 @@ final class AppModel: ObservableObject {
         workspaceContext = nil
         triggers = []
         conversations = []
-        accounts = []
+        homeAssistant = nil
         devices = []
         cubeCatDevices = []
         buildingAgents = []

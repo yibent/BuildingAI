@@ -22,7 +22,8 @@ export const formMeta: FormMeta = {
   render: renderForm,
   validate: {
     ...defaultFormMeta.validate,
-    provider: ({ value }: { value?: string }) => (value ? undefined : "请选择设备平台"),
+    provider: ({ value }: { value?: string }) =>
+      value === "homeassistant" ? undefined : "请选择 Home Assistant 设备",
     deviceId: ({ value }: { value?: string }) => (value ? undefined : "请选择物联网设备"),
   },
 };

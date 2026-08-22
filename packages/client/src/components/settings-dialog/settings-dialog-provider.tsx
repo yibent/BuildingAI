@@ -38,7 +38,7 @@ import {
   ToolsSetting,
   WalletSetting,
   WorkspaceSetting,
-  XiaomiHomeSetting,
+  HomeAssistantSetting,
 } from "./settings-items";
 import { AboutSetting } from "./settings-items/about-setting";
 import PersonalizedSetting from "./settings-items/personalized-setting";
@@ -46,7 +46,7 @@ import PersonalizedSetting from "./settings-items/personalized-setting";
 const SETTINGS_COMPONENTS: Record<SettingsPage, React.ComponentType> = {
   profile: ProfileSetting,
   cubeCat: MyCubeCatSetting,
-  smartHome: XiaomiHomeSetting,
+  smartHome: HomeAssistantSetting,
   workspace: WorkspaceSetting,
   general: GeneralSetting,
   wallet: WalletSetting,

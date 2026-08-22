@@ -123,14 +123,24 @@ export class WorkflowRuntimeService {
       globalVariable: this.getGlobalVariableSchema(),
     };
 
-    const validateResult = await this.runtimeClient.TaskValidate({
-      schema: JSON.stringify(schema),
-      inputs,
-      context: this.runtimeContext,
-    } as Parameters<WorkflowRuntimeClient["TaskValidate"]>[0]);
+    let validateResult: Awaited<ReturnType<WorkflowRuntimeClient["TaskValidate"]>>;
+    try {
+      validateResult = await this.runtimeClient.TaskValidate({
+        schema: JSON.stringify(schema),
+        inputs,
+        context: this.runtimeContext,
+      } as Parameters<WorkflowRuntimeClient["TaskValidate"]>[0]);
+    } catch (error) {
+      this.resultEmitter.fire({
+        errors: [(error as Error)?.message || "工作流校验失败"],
+      });
+      return;
+    }
     if (!validateResult?.valid) {
       this.resultEmitter.fire({
-        errors: validateResult?.errors ?? ["服务内部错误"],
+        errors: validateResult?.errors?.length
+          ? validateResult.errors
+          : ["工作流校验失败"],
       });
       return;
     }

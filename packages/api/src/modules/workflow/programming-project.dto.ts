@@ -91,8 +91,8 @@ export class UpdateProgrammingProjectDto {
 
 export class ProgrammingProjectToolDto {
     @IsOptional()
-    @IsIn(["mcp", "xiaomi", "yeelight"])
-    kind?: "mcp" | "xiaomi" | "yeelight";
+    @IsIn(["mcp", "homeassistant"])
+    kind?: "mcp" | "homeassistant";
 
     @IsOptional()
     @IsString()

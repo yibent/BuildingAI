@@ -63,25 +63,20 @@ CubeMax 使用原生 `URLSession` 调用 BuildingAI Web API。默认地址为生
 `/ai-chat` 请求需要 `modelId`（UUID）和 `messages`。客户端会优先使用已有对话的
 `modelId`，新对话可在对话页输入默认模型 ID。
 
-## 小米智能家居
+## Home Assistant 智能家居
 
-账号管理位于“我的 > 我的智能家居”，设备页面只负责设备浏览和控制。
+连接配置在网页设置中完成（HA 地址 + 长期访问令牌或账号密码）。App 只负责浏览设备和灯光/开关控制。
 
-| 方法   | 路径                                              | 说明                                        |
-| ------ | ------------------------------------------------- | ------------------------------------------- |
-| GET    | `/smart-home/xiaomi/accounts`                     | 当前用户的小米账号                          |
-| POST   | `/smart-home/xiaomi/import`                       | 导入 Home Assistant 本地脚本生成的凭据 JSON |
-| POST   | `/smart-home/xiaomi/accounts/:accountId/sync`     | 同步家庭和设备                              |
-| PATCH  | `/smart-home/xiaomi/accounts/:accountId`          | 修改账号备注                                |
-| DELETE | `/smart-home/xiaomi/accounts/:accountId`          | 删除账号及其设备缓存                        |
-| GET    | `/smart-home/xiaomi/devices`                      | 当前用户全部设备                            |
-| GET    | `/smart-home/xiaomi/devices/:deviceId`            | 设备详情                                    |
-| POST   | `/smart-home/xiaomi/devices/:deviceId/refresh`    | 刷新设备状态                                |
-| POST   | `/smart-home/xiaomi/devices/:deviceId/properties` | `{ siid, piid, value }`                     |
-| POST   | `/smart-home/xiaomi/devices/:deviceId/actions`    | `{ siid, aiid, in: [] }`                    |
+| 方法   | 路径                                              | 说明                         |
+| ------ | ------------------------------------------------- | ---------------------------- |
+| GET    | `/smart-home/ha/instance`                         | 当前用户的 HA 连接，可能为 null |
+| POST   | `/smart-home/ha/instance/sync`                    | 同步实体快照                   |
+| GET    | `/smart-home/ha/devices`                          | 当前用户全部设备               |
+| GET    | `/smart-home/ha/devices/:deviceId`                | 设备详情                     |
+| POST   | `/smart-home/ha/devices/:deviceId/refresh`        | 刷新设备状态                 |
+| POST   | `/smart-home/ha/devices/:deviceId/command`        | `{ on, brightness, color, colorTemp }` |
 
-设备控制能力由服务端返回的 `capabilities` 描述，客户端根据 `format`、 `valueRange`、`valueList`
-生成原生 Toggle、Slider、Picker 或输入控件。
+灯光控制优先：亮度 1–100，颜色为 `#rrggbb`，色温为 Kelvin。开关仅支持 `on`。
 
 ## CubeCat 设备管理
 

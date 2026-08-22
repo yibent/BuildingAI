@@ -1073,15 +1073,26 @@ export class XiaozhiService {
     }
 
     /**
-     * Publish one BuildingAI agent onto a xiaozhi agent group. The prompt is
-     * always composed server-side from the saved BuildingAI configuration;
-     * clients only choose upstream model and voice identifiers.
+     * Publish one BuildingAI agent onto a xiaozhi agent group. The prompt
+     * defaults to the saved BuildingAI role, and the client may override
+     * character plus the usual device voice/model settings before push.
      */
     async publishBuildingAgent(
         userId: string,
         organizationId: string | null | undefined,
         buildingAgentId: string,
-        input: { targetAgentId: string; model: string; voice: string; language?: string },
+        input: {
+            targetAgentId: string;
+            model: string;
+            voice: string;
+            language?: string;
+            character?: string;
+            asrSpeed?: "slow" | "normal" | "fast";
+            ttsSpeechSpeed?: "slow" | "normal" | "fast";
+            ttsPitch?: number;
+            memoryType?: "OFF" | "SHORT_TERM" | "LONG_TERM";
+            teenMode?: boolean;
+        },
     ) {
         const buildingAgent = await this.buildingAgentRepository.findOne({
             where: { id: buildingAgentId, createBy: userId },
@@ -1089,7 +1100,8 @@ export class XiaozhiService {
         if (!buildingAgent) {
             throw HttpErrorFactory.notFound("智能体不存在，只能发布自己创建的智能体");
         }
-        const character = this.composeCharacter(buildingAgent);
+        const character =
+            input.character?.trim().slice(0, 12000) || this.composeCharacter(buildingAgent);
         if (!character) {
             throw HttpErrorFactory.badRequest("请先填写智能体的角色设定再发布到方糖猫");
         }
@@ -1173,6 +1185,11 @@ export class XiaozhiService {
             body: {
                 ...config,
                 ...(input.language ? { language: input.language } : {}),
+                ...(input.asrSpeed ? { asr_speed: input.asrSpeed } : {}),
+                ...(input.ttsSpeechSpeed ? { tts_speech_speed: input.ttsSpeechSpeed } : {}),
+                ...(input.ttsPitch !== undefined ? { tts_pitch: input.ttsPitch } : {}),
+                ...(input.memoryType ? { memory_type: input.memoryType } : {}),
+                ...(input.teenMode !== undefined ? { teen_mode: input.teenMode } : {}),
                 llm_model: input.model.trim(),
                 tts_voice: input.voice.trim(),
                 character,
