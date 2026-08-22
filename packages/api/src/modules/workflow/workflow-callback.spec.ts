@@ -18,9 +18,9 @@ describe("workflow callback helpers", () => {
     it("injects only the next happy-path webhook into an agent prompt", () => {
         const host = collectDownstreamWebhookNodes(schema, "agent_host");
         expect(host.map((node) => node.id)).toEqual(["webhook_choose_1"]);
-        expect(webhookActionName(host[0])).toBe("choose_puzzle");
+        expect(webhookActionName(host[0])).toBe("choose_code");
 
-        expect(collectDownstreamWebhookNodes(schema, "lua_deal_1")).toEqual([]);
+        expect(collectDownstreamWebhookNodes(schema, "lua_a")).toEqual([]);
     });
 
     it("writes the shared MCP tool name and action into the prompt snippet", () => {
@@ -46,9 +46,9 @@ describe("workflow callback helpers", () => {
         expect(
             formatLuaResultForXiaozhi({
                 action: "deal",
-                message: "过关了！接住小星星拿到 3 分。",
+                message: "Lua 代码 A 执行完成。",
             }),
-        ).toContain("过关了！接住小星星拿到 3 分。");
+        ).toContain("Lua 代码 A 执行完成。");
     });
 
     it("matches callback actions and flattens nested data", () => {

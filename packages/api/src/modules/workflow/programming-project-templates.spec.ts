@@ -1,6 +1,10 @@
 import { LuaRuntimeService } from "../lua/lua-runtime.service";
 import { SimulatorService } from "../simulator/simulator.service";
-import { buildDecryptGameSchema, DECRYPT_TEMPLATE_LUA } from "./programming-project-templates";
+import {
+    buildDecryptGameSchema,
+    DECRYPT_TEMPLATE_LUA_A,
+    DECRYPT_TEMPLATE_LUA_B,
+} from "./programming-project-templates";
 
 jest.mock("@buildingai/errors", () => ({
     HttpErrorFactory: {
@@ -10,15 +14,19 @@ jest.mock("@buildingai/errors", () => ({
 }));
 
 describe("decrypt programming project template", () => {
-    it("uses Lua alert.show instead of the removed speech module", () => {
-        expect(DECRYPT_TEMPLATE_LUA.draftCode).toContain('require("alert")');
-        expect(DECRYPT_TEMPLATE_LUA.draftCode).not.toMatch(/require\(["']speech["']\)/);
-        expect(DECRYPT_TEMPLATE_LUA.draftCode).not.toContain("speech.say");
+    it("asks Xiaozhi to pick Lua code A or B", () => {
+        const schema = JSON.stringify(buildDecryptGameSchema("a-id", "b-id"));
+        expect(schema).toContain("Lua 代码 A");
+        expect(schema).toContain("Lua 代码 B");
+        expect(schema).toContain("choose_code");
+        expect(schema).not.toContain("正方形");
+        expect(schema).not.toContain("圆形");
+        expect(DECRYPT_TEMPLATE_LUA_A.draftCode).not.toMatch(/require\(["']speech["']\)/);
     });
 
-    it("is a three-step graph: Xiaozhi, wait for MCP, then one Lua game", () => {
-        const schema = buildDecryptGameSchema("lua-module-id") as {
-            nodes: Array<{ id: string; type: string }>;
+    it("branches from Xiaozhi MCP into two Lua demo animations", () => {
+        const schema = buildDecryptGameSchema("a-id", "b-id") as {
+            nodes: Array<{ id: string; type: string; data?: { luaModuleId?: string } }>;
             edges: Array<{ sourceNodeID: string; targetNodeID: string; sourcePortID?: string }>;
         };
 
@@ -27,58 +35,64 @@ describe("decrypt programming project template", () => {
             "start_0",
             "agent_host",
             "webhook_choose_1",
-            "lua_deal_1",
+            "condition_code",
+            "lua_a",
+            "lua_b",
             "end_0",
         ]);
+        expect(schema.nodes.find((node) => node.id === "lua_a")?.data?.luaModuleId).toBe("a-id");
+        expect(schema.nodes.find((node) => node.id === "lua_b")?.data?.luaModuleId).toBe("b-id");
         expect(schema.edges).toEqual(
             expect.arrayContaining([
-                { sourceNodeID: "start_0", targetNodeID: "agent_host" },
                 { sourceNodeID: "agent_host", targetNodeID: "webhook_choose_1" },
                 {
                     sourceNodeID: "webhook_choose_1",
-                    targetNodeID: "lua_deal_1",
+                    targetNodeID: "condition_code",
                     sourcePortID: "received",
                 },
-                { sourceNodeID: "lua_deal_1", targetNodeID: "end_0" },
+                {
+                    sourceNodeID: "condition_code",
+                    targetNodeID: "lua_b",
+                    sourcePortID: "if_b",
+                },
+                {
+                    sourceNodeID: "condition_code",
+                    targetNodeID: "lua_a",
+                    sourcePortID: "else",
+                },
             ]),
         );
-        expect(DECRYPT_TEMPLATE_LUA.draftCode).toContain("接住小星星");
-        expect(DECRYPT_TEMPLATE_LUA.draftCode).toContain("左右躲障碍");
-        expect(DECRYPT_TEMPLATE_LUA.draftCode).not.toContain("小恐龙跳一跳");
-        expect(JSON.stringify(schema)).toContain("star 或 dodge");
-        expect(JSON.stringify(schema)).not.toContain("小恐龙跳一跳");
-        expect(JSON.stringify(schema)).not.toContain("立刻调用工具 choose_puzzle");
-        expect(JSON.stringify(schema)).not.toContain("立刻调用工具 submit_answer");
     });
 
-    it("plays interactive rounds and returns a score instead of flashing a puzzle", async () => {
+    it("plays each demo animation and returns a completion message", async () => {
         const simulator = new SimulatorService();
         const runtime = new LuaRuntimeService(simulator);
         const session = simulator.create("student");
-        const schema = buildDecryptGameSchema("lua-module-id") as {
-            nodes: Array<{ id: string; data?: { inputsValues?: Record<string, unknown> } }>;
-        };
-        const dealNode = schema.nodes.find((node) => node.id === "lua_deal_1");
-        expect(dealNode?.data?.inputsValues).toMatchObject({
-            timeout_ms: { type: "constant", content: 40000 },
-        });
 
-        for (const [game, title] of [
-            ["star", "接住小星星"],
-            ["dodge", "左右躲障碍"],
-        ] as const) {
-            const result = await runtime.execute(
-                DECRYPT_TEMPLATE_LUA.draftCode,
-                { game, timeout_ms: 600 },
-                session.id,
-            );
-            expect(result.output).toMatchObject({
-                action: "deal",
-                game,
-                title,
-                correct: false,
-            });
-            expect(result.output.message).toMatch(/分/);
-        }
+        const demoA = await runtime.execute(
+            DECRYPT_TEMPLATE_LUA_A.draftCode,
+            { timeout_ms: 600 },
+            session.id,
+        );
+        expect(demoA.output).toMatchObject({
+            action: "show",
+            code: "A",
+            title: "Lua 代码 A",
+            correct: true,
+        });
+        expect(demoA.output.message).toContain("Lua 代码 A");
+
+        const demoB = await runtime.execute(
+            DECRYPT_TEMPLATE_LUA_B.draftCode,
+            { timeout_ms: 600 },
+            session.id,
+        );
+        expect(demoB.output).toMatchObject({
+            action: "show",
+            code: "B",
+            title: "Lua 代码 B",
+            correct: true,
+        });
+        expect(demoB.output.message).toContain("Lua 代码 B");
     });
 });

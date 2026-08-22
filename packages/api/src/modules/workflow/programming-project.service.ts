@@ -33,7 +33,8 @@ import {
 import {
     buildDecryptGameSchema,
     DECRYPT_TEMPLATE_ID,
-    DECRYPT_TEMPLATE_LUA,
+    DECRYPT_TEMPLATE_LUA_A,
+    DECRYPT_TEMPLATE_LUA_B,
 } from "./programming-project-templates";
 import { WorkflowService } from "./workflow.service";
 
@@ -255,20 +256,33 @@ export class ProgrammingProjectService {
                 if (createdProject.projectType !== "application") {
                     throw HttpErrorFactory.badRequest("只有应用工程可以使用模板");
                 }
-                const luaModule = await luaModuleRepository.save(
+                const codeA = await luaModuleRepository.save(
                     luaModuleRepository.create({
-                        name: DECRYPT_TEMPLATE_LUA.name,
-                        description: DECRYPT_TEMPLATE_LUA.description,
-                        draftCode: DECRYPT_TEMPLATE_LUA.draftCode,
-                        inputSchema: DECRYPT_TEMPLATE_LUA.inputSchema,
-                        outputSchema: DECRYPT_TEMPLATE_LUA.outputSchema,
-                        testParams: DECRYPT_TEMPLATE_LUA.testParams,
+                        name: DECRYPT_TEMPLATE_LUA_A.name,
+                        description: DECRYPT_TEMPLATE_LUA_A.description,
+                        draftCode: DECRYPT_TEMPLATE_LUA_A.draftCode,
+                        inputSchema: DECRYPT_TEMPLATE_LUA_A.inputSchema,
+                        outputSchema: DECRYPT_TEMPLATE_LUA_A.outputSchema,
+                        testParams: DECRYPT_TEMPLATE_LUA_A.testParams,
                         assistantMessages: [],
                         createBy: userId,
                         projectId: createdProject.id,
                     }),
                 );
-                schema = buildDecryptGameSchema(luaModule.id);
+                const codeB = await luaModuleRepository.save(
+                    luaModuleRepository.create({
+                        name: DECRYPT_TEMPLATE_LUA_B.name,
+                        description: DECRYPT_TEMPLATE_LUA_B.description,
+                        draftCode: DECRYPT_TEMPLATE_LUA_B.draftCode,
+                        inputSchema: DECRYPT_TEMPLATE_LUA_B.inputSchema,
+                        outputSchema: DECRYPT_TEMPLATE_LUA_B.outputSchema,
+                        testParams: DECRYPT_TEMPLATE_LUA_B.testParams,
+                        assistantMessages: [],
+                        createBy: userId,
+                        projectId: createdProject.id,
+                    }),
+                );
+                schema = buildDecryptGameSchema(codeA.id, codeB.id);
             } else {
                 schema = isPopulatedSchema(dto.schema) ? dto.schema : defaultMainWorkflowSchema();
             }
