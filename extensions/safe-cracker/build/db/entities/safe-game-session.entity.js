@@ -64,6 +64,7 @@ _ts_decorate([
 ], SafeGameSession.prototype, "ownerUserId", void 0);
 _ts_decorate([
   typeorm.Column({
+    type: "varchar",
     length: 120,
     comment: "ClassroomKit \u4F1A\u8BDD\u6807\u8BC6"
   }),
@@ -71,6 +72,7 @@ _ts_decorate([
 ], SafeGameSession.prototype, "kitSessionKey", void 0);
 _ts_decorate([
   typeorm.Column({
+    type: "varchar",
     length: 120,
     default: "\u7834\u89E3\u4FDD\u9669\u7BB1"
   }),

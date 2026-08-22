@@ -93,15 +93,16 @@ Body: { systemPrompt: string, promptName?: string }
 
 **类型**: `webhook`
 
-**功能**: 定义可被 xiaozhi.me 调用的 MCP 端点，用于接收回传数据
+**功能**: 等待 CubeCat 调用常驻 MCP 工具 `classroom_report_completion`。节点上的事件名和调用说明会在「设置智能体」执行时写入提示词，运行到本节点时只等待匹配的 `action`。
 
 **数据字段**:
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| toolName | string | 是 | MCP 工具名称 |
-| toolDescription | string | 否 | 工具描述 |
-| inputSchema | object | 否 | 输入参数 JSON Schema |
+| toolName | string | 是 | 回传事件名，CubeCat 调用时常驻工具的 `action` |
+| toolDescription | string | 否 | 写入智能体提示词的调用说明 |
+| inputSchema | object | 否 | 期望参数的 JSON Schema，用于生成提示词示例 |
+| timeoutMs | number | 否 | 超时毫秒；超时走错误口 |
 
 **示例**:
 ```json
@@ -289,19 +290,11 @@ Agent: 恢复到默认提示词
 
 ## 硬件接口说明
 
-### MCP 端点注册
+### MCP 回传
 
-发布应用工程时，系统会自动为每个 Webhook 节点注册 MCP 端点：
+应用开始运行时会自动接通 `wss://api.xiaozhi.me/mcp/`，不必在工程设置里单独配置。工具表里始终有常驻回传工具 `classroom_report_completion`（工作空间可改名），参数包括 `action`、自由字段、以及课堂用的 `summary` / `task_key` / `score`。
 
-```
-POST /api/xiaozhi/agents/{agentId}/mcp/register
-Body: {
-  toolName: string,
-  description: string,
-  inputSchema: object,
-  callbackUrl: string
-}
-```
+工作流回传端点不再往工具表里动态加工具。Xiaozhi 缓存工具列表，中途注入后必须重置对话才能用。回传节点只等待 `action` 等于该节点事件名的那一次调用。
 
 ### 设备控制协议
 

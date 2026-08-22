@@ -179,7 +179,7 @@ export default function ProjectSettingsPage() {
             <h2 className="text-sm font-medium">CubeCat 设备</h2>
             <p className="text-muted-foreground text-xs">
               选择这台应用要控制的 CubeCat。运行目标为 CubeCat 设备时，Lua
-              模块会发到这台真实设备上执行。
+              模块会发到这台真实设备上执行。应用启动时会自动接通回传 MCP，不用在工程里单独配置。
             </p>
           </div>
           {agentsQuery.isLoading ? (

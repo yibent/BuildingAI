@@ -1,10 +1,12 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
- * 26.5.14 — Replace Xiaomi/Yeelight cloud adapters with Home Assistant.
+ * 26.5.15 — Replace Xiaomi/Yeelight cloud adapters with Home Assistant.
+ *
+ * Runs after 26.5.14 re-issues Yeelight tables, then drops Xiaomi/Yeelight.
  */
-export class Migration1787972800000 implements MigrationInterface {
-    name = "Migration1787972800000";
+export class Migration1788059200000 implements MigrationInterface {
+    name = "Migration1788059200000";
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);

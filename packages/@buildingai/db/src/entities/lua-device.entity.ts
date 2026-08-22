@@ -15,6 +15,8 @@ export type LuaDeviceRuntime = {
     apiVersion: string;
     transferStorage: string;
     maxRunTimeoutMs: number;
+    macAddress?: string;
+    clientId?: string;
 };
 
 export type LuaDeviceRunStatus =

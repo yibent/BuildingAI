@@ -1,10 +1,14 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
- * 26.5.10 - Yeelight Pro cloud accounts, QR login sessions and color-light snapshots.
+ * 26.5.14 — Re-issue Yeelight Pro tables.
+ *
+ * 26.5.10 shipped two migrations with the same TypeORM name
+ * (`Migration1787625600000`). The repair-legacy-schema file ran; the Yeelight
+ * tables were recorded as already applied and never created.
  */
-export class Migration1787625600000 implements MigrationInterface {
-    name = "Migration1787625600000";
+export class Migration1787972800000 implements MigrationInterface {
+    name = "Migration1787972800000";
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);

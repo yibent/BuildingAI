@@ -28,10 +28,10 @@ export class SafeGameSession {
     ownerUserId: string;
 
     /** 传给 ClassroomKit 的会话标识，结束时用它归还设备。 */
-    @Column({ length: 120, comment: "ClassroomKit 会话标识" })
+    @Column({ type: "varchar", length: 120, comment: "ClassroomKit 会话标识" })
     kitSessionKey: string;
 
-    @Column({ length: 120, default: "破解保险箱" })
+    @Column({ type: "varchar", length: 120, default: "破解保险箱" })
     title: string;
 
     @Index()

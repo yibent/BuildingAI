@@ -1,6 +1,6 @@
 import type { ProgrammingProjectPublishedSnapshot } from "@buildingai/db/entities";
 import { HttpErrorFactory } from "@buildingai/errors";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 
 import { LuaDeviceGatewayService } from "../lua-device/lua-device-gateway.service";
 import { XiaozhiService } from "../organization/services/xiaozhi.service";
@@ -23,6 +23,8 @@ function isPublishedSnapshot(value: unknown): value is ProgrammingProjectPublish
 
 @Injectable()
 export class WorkflowRuntimeDeviceService {
+    private readonly logger = new Logger(WorkflowRuntimeDeviceService.name);
+
     constructor(
         private readonly xiaozhiService: XiaozhiService,
         private readonly luaDeviceGatewayService: LuaDeviceGatewayService,
@@ -56,6 +58,21 @@ export class WorkflowRuntimeDeviceService {
                     "CubeCat 已绑定，但脚本通道未连接。请在设备上打开远程脚本后再试",
                 );
             }
+            this.logger.warn(
+                `Lua channel mismatch cubeCat=${cubeCatDevices
+                    .map(
+                        (device) =>
+                            `${device.macAddress || "-"}/${device.clientId || "-"}/${device.online ? "on" : "off"}`,
+                    )
+                    .join(",") || "none"} lua=${
+                    luaDevices
+                        .map(
+                            (device) =>
+                                `${device.deviceId}/${device.macAddress || "-"}/${device.online ? "on" : "off"}`,
+                        )
+                        .join(",") || "none"
+                }`,
+            );
             throw HttpErrorFactory.badRequest(
                 "找不到这台 CubeCat 的脚本通道。请确认设备已联网并打开远程脚本",
             );

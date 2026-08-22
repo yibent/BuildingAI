@@ -3,10 +3,15 @@ import { HttpErrorFactory } from "@buildingai/errors";
 import type { WebhookExecutorInput, WebhookExecutorResult } from "@flowgram.ai/runtime-js";
 import { Injectable } from "@nestjs/common";
 
-import { WorkflowWebhookToolRegistry } from "../organization/services/workflow-webhook-tool-registry.service";
+import { XiaozhiMcpService } from "../organization/services/xiaozhi-mcp.service";
+import {
+    DEFAULT_CALLBACK_TOOL_NAME,
+    mergeCallbackPayload,
+    webhookActionName,
+} from "./workflow-callback";
 import { WorkflowWaitRegistry } from "./workflow-wait-registry.service";
 
-const TOOL_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
+const ACTION_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
 
 function isPublishedSnapshot(value: unknown): value is ProgrammingProjectPublishedSnapshot {
     return (
@@ -30,25 +35,25 @@ function asNumber(value: unknown): number | undefined {
     return undefined;
 }
 
-function asSchema(value: unknown): Record<string, unknown> {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-        return value as Record<string, unknown>;
-    }
-    return { type: "object", properties: {} };
-}
-
 @Injectable()
 export class WorkflowWebhookExecutorService {
     constructor(
-        private readonly webhookTools: WorkflowWebhookToolRegistry,
         private readonly waitRegistry: WorkflowWaitRegistry,
+        private readonly mcpService: XiaozhiMcpService,
     ) {}
 
     async execute(input: WebhookExecutorInput): Promise<WebhookExecutorResult> {
-        const toolName = asText(input.node.data?.toolName).trim();
-        if (!toolName) throw HttpErrorFactory.badRequest("请填写回传工具名称");
-        if (!TOOL_NAME_PATTERN.test(toolName)) {
-            throw HttpErrorFactory.badRequest("工具名必须以字母开头，只能包含字母、数字和下划线");
+        const actionName = webhookActionName({
+            id: input.node.id,
+            type: input.node.type,
+            data: input.node.data,
+        });
+        if (!actionName) throw HttpErrorFactory.badRequest("请填写回传事件名");
+        if (!ACTION_NAME_PATTERN.test(actionName)) {
+            throw HttpErrorFactory.badRequest("事件名必须以字母开头，只能包含字母、数字和下划线");
+        }
+        if (!input.userId) {
+            throw HttpErrorFactory.unauthorized("回传端点需要登录后执行");
         }
 
         const agentId = this.resolveAgentId(input);
@@ -58,57 +63,48 @@ export class WorkflowWebhookExecutorService {
 
         const timeoutMs = asNumber(input.node.data?.timeoutMs) ?? 0;
         const context = asText(input.inputs.context);
-        const sessionId = `webhook:${input.node.id}:${Date.now()}`;
+        const mcpToolName =
+            (await this.mcpService.resolveCallbackToolName(agentId)) || DEFAULT_CALLBACK_TOOL_NAME;
 
-        this.webhookTools.register(sessionId, agentId, [
+        const result = await this.waitRegistry.wait(
             {
-                name: toolName,
-                title: toolName,
-                description: asText(input.node.data?.toolDescription).trim() || "工作流回传端点",
-                inputSchema: asSchema(input.node.data?.inputSchema),
-                handler: (args) => ({ received: true, ...args }),
+                triggerId: mcpToolName,
+                xiaozhiAgentId: agentId,
+                projectId: input.runtimeContext?.projectId,
+                expectedValue: actionName,
             },
-        ]);
+            { timeoutMs, signal: input.signal },
+        );
 
-        try {
-            const result = await this.waitRegistry.wait(
-                {
-                    triggerId: toolName,
-                    xiaozhiAgentId: agentId,
-                    projectId: input.runtimeContext?.projectId,
-                },
-                { timeoutMs, signal: input.signal },
-            );
-
-            const payload = result.event?.data ?? {};
-            const action = typeof payload.action === "string" ? payload.action : "";
-
-            if (result.timedOut) {
-                return {
-                    branch: "error",
-                    outputs: {
-                        received: false,
-                        data: {},
-                        action: "",
-                        timestamp: Date.now(),
-                        context,
-                    },
-                };
-            }
-
+        if (result.timedOut) {
             return {
-                branch: "received",
+                branch: "error",
                 outputs: {
-                    received: true,
-                    data: payload,
-                    action,
+                    received: false,
+                    data: {},
+                    action: "",
                     timestamp: Date.now(),
                     context,
                 },
             };
-        } finally {
-            this.webhookTools.unregister(sessionId);
         }
+
+        const payload = mergeCallbackPayload(
+            result.event?.data && typeof result.event.data === "object"
+                ? result.event.data
+                : {},
+        );
+
+        return {
+            branch: "received",
+            outputs: {
+                received: true,
+                data: payload,
+                action: asText(payload.action) || actionName,
+                timestamp: Date.now(),
+                context,
+            },
+        };
     }
 
     private resolveAgentId(input: WebhookExecutorInput): string | undefined {

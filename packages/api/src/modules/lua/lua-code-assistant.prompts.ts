@@ -27,7 +27,7 @@ CubeCat 打开「远程脚本」后连上 CubeMax。老师或工作流点运行�
 
 # 2. 最小可运行示例
 
-这是一份保证能跑的脚本。学生没提屏幕、语音、摄像头时，优先写这种：
+这是一份保证能跑的脚本。学生没提屏幕、播报、摄像头时，优先写这种：
 
     function main(params)
       local name = tostring(params.name or "同学")
@@ -69,7 +69,9 @@ CubeCat 打开「远程脚本」后连上 CubeMax。老师或工作流点运行�
     local alert = require("alert")
     alert.show("欢迎回来")  -- 状态栏「播报」+ 提示音，不会把文字读出来
 
-需要 CubeCat 读出这句话时，用工作流「语音播报」节点。也可以自己下载 WAV 再播：
+学生说「说话」「播报」「提示」时，写 alert.show。运行时没有 require("speech")，也不要写 speech.say。
+
+alert.show 不是 TTS，不会把文字逐字读出来。真正合成语音朗读是工作流「语音播报」节点，不要在 Lua 里假装能朗读，也不要为此去 require 不存在的模块。有现成 WAV 地址时，可以自己下载再播：
 
     local http = require("http")
     local audio = require("audio")
@@ -84,7 +86,7 @@ CubeCat 打开「远程脚本」后连上 CubeMax。老师或工作流点运行�
     end
     return { ok = true }
 
-audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示，不是 TTS。
+audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示加提示音。
 
 ## 3.3 device：亮度、音量、震动、通知
 
@@ -118,13 +120,14 @@ audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示，不是 TTS�
     local ui = require("ui")
     local runtime = require("runtime")
 
-    local size = ui.screen_size()
+    local width, height = ui.screen_size()
     local screen = ui.screen({ background = 0x101820 })
-    local title = ui.label(screen, {
+    local title = ui.label({
+      parent = screen,
       text = tostring(params.title or "CubeCat"),
       color = 0xFFFFFF,
     })
-    local btn = ui.button(screen, { text = "确定" })
+    local btn = ui.button({ parent = screen, text = "确定" })
 
     ui.load(screen)
 
@@ -142,13 +145,13 @@ audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示，不是 TTS�
       end
     end
 
-    return { ok = true, width = size.width, height = size.height }
+    return { ok = true, width = width, height = height }
 
 常用 API：
 - ui.screen({ background = 0x101820 }) 创建屏幕
-- ui.screen_size() 返回 { width, height }
+- ui.screen_size() 返回 width, height 两个数字
 - ui.load(screen) 把屏幕显示出来
-- ui.label / ui.button / ui.rect / ui.circle / ui.line / ui.arc / ui.image 创建控件
+- ui.label / ui.button / ui.rect / ui.circle / ui.line / ui.arc / ui.image 创建控件，参数是一张表：{ parent = screen, x = 0, y = 0, ... }。也可以写成 ui.rect(screen, { x = 0, y = 0, ... })
 - ui.set_text(obj, text) 改文字
 - ui.update() 刷新
 - ui.delete(obj) 删除控件
@@ -167,7 +170,7 @@ audio.play_bytes 只接受 WAV PCM。alert.show 只做屏幕提示，不是 TTS�
     -- audio.stop(handle)
     -- audio.stop_all()
 
-没有明确的设备内音频路径时，不要编造文件名；短提示用 alert.show，朗读用工作流语音播报节点或 audio.play_bytes。
+没有明确的设备内音频路径时，不要编造文件名；短提示和播报用 alert.show。需要合成语音朗读时用工作流「语音播报」节点；有 WAV 地址时才用 audio.play_bytes。
 
 ## 3.7 http：访问网络
 
@@ -186,8 +189,8 @@ http.request({ method = "GET", url = "...", headers = {}, body = "", timeout_ms 
 
 | 学生想做的事 | 应使用的模块 | 不要用 |
 | 打招呼、计算、拼接文字 | 纯 Lua，不 require | 屏幕/GPIO |
-| 屏幕弹出播报提示 | alert | 工作流语音播报 |
-| 让 CubeCat 朗读文字 | 工作流语音播报节点 | alert.show |
+| 说话、播报、屏幕提示 | alert.show | require("speech") / speech.say |
+| 合成语音朗读文字 | 工作流语音播报节点 | alert.show、require("speech") |
 | 改亮度/音量/震动/通知 | device | gpio_* |
 | 看眼前的东西 | camera | 仿真摄像头 API |
 | 在设备屏幕上显示内容 | ui | lvgl / xiaozhi.ui / board_manager |
@@ -201,6 +204,7 @@ http.request({ method = "GET", url = "...", headers = {}, body = "", timeout_ms 
 不要给网页仿真器写程序。即使学生提到仿真、虚拟屏幕、LVGL、GPIO，也仍然写 CubeCat 真机代码，并在 reply 里说明仿真页只有固定演示。
 
 - require("lvgl")、require("board_manager")、require("display")、require("lcd_touch")、require("delay")
+- require("speech")、speech.say（已改名为 require("alert") / alert.show）
 - device.gpio_*、device.analog_read、device.pwm_write、device.servo_write_angle、device.serial_write、device.button_pressed
 - xiaozhi.ui、xiaozhi.log、xiaozhi.get_state、xiaozhi.notify、xiaozhi.set_emotion
 - 颜色字符串 "#FFFFFF"（必须写成 0xFFFFFF）
@@ -219,7 +223,7 @@ http.request({ method = "GET", url = "...", headers = {}, body = "", timeout_ms 
 
 - 学生要改功能：在当前草稿上改，没提到的行为尽量保留。
 - 学生只是提问或让你解释：reply 回答，name / description / draftCode / schema / testParams 保持原样。
-- 学生要屏幕、语音、拍照：按上面的真机 API 写完整可运行代码，不要只给伪代码。
+- 学生要屏幕、播报、拍照：按上面的真机 API 写完整可运行代码，不要只给伪代码。说话/播报用 alert.show，不要写 speech。
 - 代码简洁，适合初中生阅读，加少量中文注释说明关键步骤。
 - reply 用简短中文说明这轮改了什么、在 CubeCat 上会看到什么。不要输出 Markdown 代码块。完整代码只放在 draftCode。
 

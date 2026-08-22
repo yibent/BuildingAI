@@ -3,6 +3,7 @@ import { HttpErrorFactory } from "@buildingai/errors";
 import type { WaitExecutorInput, WaitExecutorResult } from "@flowgram.ai/runtime-js";
 import { Injectable } from "@nestjs/common";
 
+import { XiaozhiMcpService } from "../organization/services/xiaozhi-mcp.service";
 import { WorkflowWaitRegistry } from "./workflow-wait-registry.service";
 
 function isPublishedSnapshot(value: unknown): value is ProgrammingProjectPublishedSnapshot {
@@ -29,7 +30,10 @@ function asNumber(value: unknown): number | undefined {
 
 @Injectable()
 export class WorkflowWaitExecutorService {
-    constructor(private readonly waitRegistry: WorkflowWaitRegistry) {}
+    constructor(
+        private readonly waitRegistry: WorkflowWaitRegistry,
+        private readonly mcpService: XiaozhiMcpService,
+    ) {}
 
     async execute(input: WaitExecutorInput): Promise<WaitExecutorResult> {
         const waitType = asText(input.node.data?.waitType) || "timeout";
@@ -68,8 +72,14 @@ export class WorkflowWaitExecutorService {
         }
 
         const xiaozhiAgentId = this.resolveAgentId(input);
-        if (waitType === "mcp_call" && !xiaozhiAgentId) {
-            throw HttpErrorFactory.badRequest("请先在工程设置中绑定 CubeCat 智能体");
+        if (waitType === "mcp_call") {
+            if (!xiaozhiAgentId) {
+                throw HttpErrorFactory.badRequest("请先在工程设置中绑定 CubeCat 智能体");
+            }
+            if (!input.userId) {
+                throw HttpErrorFactory.unauthorized("等待 MCP 调用需要登录后执行");
+            }
+            await this.mcpService.ensureAgentConnection(input.userId, xiaozhiAgentId);
         }
 
         const result = await this.waitRegistry.wait(

@@ -1,7 +1,6 @@
 /**
- * Webhook 节点 - 自定义回传 MCP 节点
- * 用于定义一个可被 xiaozhi.me 调用的 MCP 工具，接收回传数据
- * 这是与应用工作流通信的核心机制
+ * Webhook 节点 - 等待 CubeCat 通过常驻回传 MCP 把数据送回来。
+ * 调用说明会在「设置智能体」执行时写入提示词，这里只等待消息。
  */
 
 import { nanoid } from "nanoid";
@@ -17,7 +16,7 @@ export const WebhookNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Webhook,
   info: {
     icon: iconWebhook,
-    description: "向 CubeCat 注册一个回传工具，收到调用后带着数据继续往下走。",
+    description: "等待 CubeCat 调用常驻回传工具。调用说明会自动写入前面的智能体提示词。",
   },
   meta: {
     nodePanelLabel: "回传端点",

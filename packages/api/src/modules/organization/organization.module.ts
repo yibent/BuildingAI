@@ -98,6 +98,12 @@ import { XiaozhiMcpGatewayService, XiaozhiMcpService } from "./services/xiaozhi-
         OrganizationQuotaService,
         OrganizationConsoleService,
     ],
-    exports: [OrganizationService, ClassroomService, XiaozhiService, WorkflowWebhookToolRegistry],
+    exports: [
+        OrganizationService,
+        ClassroomService,
+        XiaozhiService,
+        XiaozhiMcpService,
+        WorkflowWebhookToolRegistry,
+    ],
 })
 export class OrganizationModule {}

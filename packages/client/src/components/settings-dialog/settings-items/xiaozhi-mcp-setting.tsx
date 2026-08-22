@@ -248,8 +248,10 @@ function McpSettingsDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>编辑 MCP 完成工具</DialogTitle>
-          <DialogDescription>保存后会自动重载当前工作空间已启用的连接</DialogDescription>
+          <DialogTitle>编辑 MCP 回传工具</DialogTitle>
+          <DialogDescription>
+            这是 CubeCat 常驻的回传工具，课堂完成和工作流回传共用。保存后会重载已启用的连接；已开始的对话需要重置后才会用上新说明。
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -260,7 +262,7 @@ function McpSettingsDialog({
                 onChange={(event) => update("toolName", event.target.value)}
               />
               <span className="text-muted-foreground text-xs">
-                智能体提示词中调用的 MCP 工具名称
+                CubeCat 对话开始时就能看到的常驻工具名。中途改名需要重置对话。
               </span>
             </div>
             <div className="grid gap-1.5">

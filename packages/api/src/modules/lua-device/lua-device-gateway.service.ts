@@ -16,7 +16,7 @@ import type { Duplex } from "stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import type { CreateLuaDeviceRunDto } from "./lua-device.dto";
-import { calculateLuaChunkCrc32 } from "./lua-device-protocol";
+import { calculateLuaChunkCrc32, extractLuaHelloIdentities } from "./lua-device-protocol";
 import { encodeWavToOpusFrames, type OpusSpeakPayload } from "./wav-to-opus";
 
 const MAX_MESSAGE_BYTES = 80 * 1024;
@@ -42,6 +42,10 @@ type ClientState = {
     deviceId?: string;
     bootId?: string;
     connectionId?: string;
+    macAddress?: string;
+    clientId?: string;
+    headerDeviceId?: string;
+    headerClientId?: string;
     pending: Map<string, PendingRequest>;
 };
 
@@ -70,6 +74,17 @@ function numberField(value: Record<string, unknown>, key: string): number | unde
 
 function sha256(value: Buffer | string): string {
     return createHash("sha256").update(value).digest("hex");
+}
+
+function headerValue(request: IncomingMessage, name: string): string | undefined {
+    const raw = request.headers[name];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
+}
+
+function identityKey(value?: string | null): string {
+    return (value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 @Injectable()
@@ -174,19 +189,14 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         const maxTimeout = Math.min(60_000, device.runtime?.maxRunTimeoutMs ?? 60_000);
         if (timeoutMs > maxTimeout) throw HttpErrorFactory.badRequest("运行超时超过设备限制");
 
-        const activeRun = await this.runRepository.findOne({
-            where: {
-                deviceId,
-                status: In([
-                    "preparing",
-                    "transferring",
-                    "running",
-                    "stopping",
-                    "waiting_for_device",
-                ]),
-            },
-        });
-        const canDispatch = this.clients.has(deviceId) && !activeRun;
+        const client = this.findClient(deviceId);
+        await this.replaceStaleActiveRun(deviceId, client);
+        const canDispatch = Boolean(client);
+        if (!canDispatch) {
+            this.logger.warn(
+                `Lua run queued: no live script socket for ${deviceId} (online=${[...this.clients.keys()].join(",") || "none"})`,
+            );
+        }
         const run = await this.runRepository.save(
             this.runRepository.create({
                 deviceId,
@@ -235,19 +245,9 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             throw HttpErrorFactory.badRequest(message);
         }
 
-        const activeRun = await this.runRepository.findOne({
-            where: {
-                deviceId,
-                status: In([
-                    "preparing",
-                    "transferring",
-                    "running",
-                    "stopping",
-                    "waiting_for_device",
-                ]),
-            },
-        });
-        const canDispatch = this.clients.has(deviceId) && !activeRun;
+        const client = this.findClient(deviceId);
+        await this.replaceStaleActiveRun(deviceId, client);
+        const canDispatch = Boolean(client);
         const durationMs = encoded.durationMs || opts.durationMs || 0;
         const params = {
             kind: "speak",
@@ -297,7 +297,7 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             await this.runRepository.save(run);
             return this.serializeRun(run);
         }
-        const client = this.clients.get(deviceId);
+        const client = this.findClient(deviceId);
         if (!client) {
             run.status = "stopping";
             run.error = { code: "STOP_PENDING", message: "设备离线，停止请求将在重连后发送" };
@@ -312,14 +312,17 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         return this.serializeRun(run);
     }
 
-    async waitForRun(userId: string, deviceId: string, runId: string, maxWaitMs = 65_000) {
-        const deadline = Date.now() + maxWaitMs;
+    async waitForRun(userId: string, deviceId: string, runId: string, maxWaitMs?: number) {
+        const first = await this.requireOwnedRun(userId, deviceId, runId);
+        const deadline =
+            Date.now() + (maxWaitMs ?? Math.min(70_000, (first.timeoutMs || 15_000) + 10_000));
+        let run = first;
         while (Date.now() < deadline) {
-            const run = await this.requireOwnedRun(userId, deviceId, runId);
             if (TERMINAL_STATUSES.includes(run.status as (typeof TERMINAL_STATUSES)[number])) {
                 return this.serializeRun(run);
             }
             await new Promise<void>((resolve) => setTimeout(resolve, 250));
+            run = await this.requireOwnedRun(userId, run.deviceId, runId);
         }
         throw HttpErrorFactory.badRequest("等待 CubeCat 执行结果超时");
     }
@@ -340,6 +343,8 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             alive: true,
             protocol: "legacy",
             pending: new Map(),
+            headerDeviceId: headerValue(request, "device-id"),
+            headerClientId: headerValue(request, "client-id"),
             helloTimer: setTimeout(
                 () => socket.close(4401, "hello timeout"),
                 HELLO_TIMEOUT_MS,
@@ -374,6 +379,11 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             const data = isRecord(parsed.data) ? { ...parsed.data } : parsed;
             if (typeof parsed.protocol === "string" && typeof data.protocol !== "string") {
                 data.protocol = parsed.protocol;
+            }
+            if (isRecord(parsed.device)) {
+                data.device = isRecord(data.device)
+                    ? { ...parsed.device, ...data.device }
+                    : parsed.device;
             }
             envelope = {
                 v: 1,
@@ -417,11 +427,12 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     private async registerConnection(socket: WebSocket, state: ClientState, envelope: Envelope) {
         const data = envelope.data;
         const deviceObj = isRecord(data.device) ? data.device : {};
-        const deviceId = (
-            stringField(data, "device_id") ||
-            stringField(deviceObj, "uuid") ||
-            stringField(deviceObj, "mac")
-        )?.toLowerCase();
+        const identities = extractLuaHelloIdentities({
+            data,
+            headerDeviceId: state.headerDeviceId,
+            headerClientId: state.headerClientId,
+        });
+        const deviceId = identities.deviceId?.toLowerCase();
         const bootId = stringField(data, "boot_id") || randomUUID();
         const firmwareVersion = (
             stringField(data, "firmware_version") ||
@@ -448,8 +459,10 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         state.ready = true;
         state.deviceId = deviceId;
         state.bootId = bootId;
+        state.macAddress = identities.macAddress?.toLowerCase();
+        state.clientId = identities.clientId?.toLowerCase();
         state.connectionId = randomUUID();
-        const previous = this.clients.get(deviceId);
+        const previous = this.findClient(deviceId);
         if (previous && previous.socket !== socket) previous.socket.close(4000, "replaced");
         this.clients.set(deviceId, { socket, state });
 
@@ -465,6 +478,8 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         ].filter((item): item is string => typeof item === "string");
         device.capabilities = [...new Set(helloCaps)];
         device.limits = this.parseLimits(data.limits);
+        const macAddress = state.macAddress;
+        const clientId = state.clientId;
         device.runtime = isRecord(data.runtime)
             ? {
                   executionModel: stringField(data.runtime, "execution_model") || "main_once",
@@ -473,13 +488,20 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
                       (state.protocol === "lap" ? "claw4.v1" : "xiaozhi.v1"),
                   transferStorage: stringField(data.runtime, "transfer_storage") || "ram",
                   maxRunTimeoutMs: numberField(data.runtime, "max_run_timeout_ms") || 60_000,
+                  ...(macAddress ? { macAddress } : {}),
+                  ...(clientId ? { clientId } : {}),
               }
             : {
                   executionModel: "main_once",
                   apiVersion: state.protocol === "lap" ? "claw4.v1" : "xiaozhi.v1",
                   transferStorage: "ram",
                   maxRunTimeoutMs: 60_000,
+                  ...(macAddress ? { macAddress } : {}),
+                  ...(clientId ? { clientId } : {}),
               };
+        this.logger.log(
+            `Lua device ${deviceId} connected protocol=${state.protocol} mac=${macAddress ?? "-"} client=${clientId ?? "-"}`,
+        );
         await this.deviceRepository.save(device);
         await this.connectionRepository.save(
             this.connectionRepository.create({
@@ -688,13 +710,24 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     }
 
     private isSpeakRun(run: LuaDeviceRun): boolean {
-        return isRecord(run.params) && run.params.kind === "speak";
+        if (isRecord(run.params) && run.params.kind === "speak") return true;
+        return run.name === "speech" && !run.source;
     }
 
     private async sendSpeak(run: LuaDeviceRun) {
-        const client = this.clients.get(run.deviceId);
+        const client = this.findClient(run.deviceId);
         const audio = this.speakPayloads.get(run.id);
-        if (!client || !audio) return;
+        if (!audio) {
+            run.status = "failed";
+            run.error = { code: "AUDIO_MISSING", message: "播报音频已丢失，请重新运行节点" };
+            run.finishedAt = new Date();
+            await this.runRepository.save(run);
+            return;
+        }
+        if (!client) {
+            this.logger.warn(`speak ${run.id} not dispatched: ${run.deviceId} is offline`);
+            return;
+        }
         if (client.state.protocol !== "lap") {
             run.status = "failed";
             run.error = { code: "UNSUPPORTED", message: "当前设备协议不支持直接播报" };
@@ -704,7 +737,7 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             return;
         }
         const params = isRecord(run.params) ? run.params : {};
-        this.sendLap(client.socket, {
+        const sent = this.sendLap(client.socket, {
             v: 1,
             type: "speak",
             id: run.id,
@@ -716,15 +749,22 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             wait: params.wait !== false,
             duration_ms: numberField(params, "durationMs") ?? audio.durationMs,
         });
+        if (!sent) {
+            run.status = "waiting_for_device";
+            run.error = { code: "SOCKET_CLOSED", message: "脚本通道已断开，等待重连" };
+            await this.runRepository.save(run);
+            return;
+        }
         for (const frame of audio.frames) {
             if (client.socket.readyState !== WebSocket.OPEN) break;
             client.socket.send(frame, { binary: true });
         }
         run.status = "running";
         run.startedAt ??= new Date();
+        run.error = null;
         await this.runRepository.save(run);
         this.logger.log(
-            `speak ${run.id} opus frames=${audio.frames.length} durationMs=${audio.durationMs}`,
+            `speak ${run.id} dispatched to ${run.deviceId} opus frames=${audio.frames.length} durationMs=${audio.durationMs}`,
         );
     }
 
@@ -733,10 +773,13 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             await this.sendSpeak(run);
             return;
         }
-        const client = this.clients.get(run.deviceId);
-        if (!client) return;
+        const client = this.findClient(run.deviceId);
+        if (!client) {
+            this.logger.warn(`Lua run ${run.id} not dispatched: ${run.deviceId} is offline`);
+            return;
+        }
         if (client.state.protocol === "lap") {
-            this.sendLap(client.socket, {
+            const sent = this.sendLap(client.socket, {
                 v: 1,
                 type: "run",
                 id: run.id,
@@ -746,9 +789,19 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
                 timeout_ms: run.timeoutMs,
                 capabilities: this.toLapCapabilities(run.requiredCapabilities),
             });
+            if (!sent) {
+                run.status = "waiting_for_device";
+                run.error = { code: "SOCKET_CLOSED", message: "脚本通道已断开，等待重连" };
+                await this.runRepository.save(run);
+                return;
+            }
             run.status = "running";
             run.startedAt ??= new Date();
+            run.error = null;
             await this.runRepository.save(run);
+            this.logger.log(
+                `Lua run ${run.id} dispatched to ${run.deviceId} bytes=${Buffer.byteLength(run.source, "utf8")} timeoutMs=${run.timeoutMs}`,
+            );
             return;
         }
         const sourceLength = Buffer.byteLength(run.source, "utf8");
@@ -780,7 +833,7 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     }
 
     private async sendNextChunk(run: LuaDeviceRun) {
-        const client = this.clients.get(run.deviceId);
+        const client = this.findClient(run.deviceId);
         if (!client) return;
         const source = Buffer.from(run.source, "utf8");
         const totalChunks = Math.ceil(source.length / run.chunkBytes);
@@ -826,7 +879,7 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         });
         if (!run) return;
         if (run.status === "stopping") {
-            const client = this.clients.get(deviceId);
+            const client = this.findClient(deviceId);
             if (client?.state.protocol === "lap") {
                 this.sendLap(client.socket, { v: 1, type: "cancel", id: run.id });
             } else if (client) {
@@ -955,23 +1008,43 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
 
     private async findDeviceRun(deviceId: string, runId?: string) {
         if (!runId) return null;
-        return this.runRepository.findOne({ where: { id: runId, deviceId } });
+        const run = await this.runRepository.findOne({ where: { id: runId } });
+        if (!run) return null;
+        if (run.deviceId === deviceId) return run;
+        const caller = this.findClient(deviceId);
+        const owner = this.findClient(run.deviceId);
+        if (caller && owner && caller.socket === owner.socket) return run;
+        return null;
     }
 
     private async requireDevice(deviceId: string) {
-        const device = await this.deviceRepository.findOne({
-            where: { deviceId: deviceId.toLowerCase() },
+        const normalized = deviceId.toLowerCase();
+        let device = await this.deviceRepository.findOne({
+            where: { deviceId: normalized },
         });
+        if (!device) {
+            const client = this.findClient(normalized);
+            if (client?.state.deviceId) {
+                device = await this.deviceRepository.findOne({
+                    where: { deviceId: client.state.deviceId },
+                });
+            }
+        }
         if (!device) throw HttpErrorFactory.notFound("物理设备不存在");
         return device;
     }
 
     private async requireOwnedRun(userId: string, deviceId: string, runId: string) {
         const run = await this.runRepository.findOne({
-            where: { id: runId, deviceId: deviceId.toLowerCase(), createBy: userId },
+            where: { id: runId, createBy: userId },
         });
         if (!run) throw HttpErrorFactory.notFound("Lua 运行任务不存在");
-        return run;
+        if (run.deviceId === deviceId.toLowerCase()) return run;
+        if (identityKey(run.deviceId) === identityKey(deviceId)) return run;
+        const caller = this.findClient(deviceId);
+        const owner = this.findClient(run.deviceId);
+        if (caller && owner && caller.socket === owner.socket) return run;
+        throw HttpErrorFactory.notFound("Lua 运行任务不存在");
     }
 
     private async handleLapResult(deviceId: string, envelope: Envelope) {
@@ -1007,8 +1080,67 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
         await this.resumePendingRun(deviceId);
     }
 
-    private sendLap(socket: WebSocket, payload: Record<string, unknown>) {
-        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+    private findClient(deviceId: string): OnlineClient | undefined {
+        const direct = this.clients.get(deviceId);
+        if (direct) return direct;
+        const wanted = new Set(
+            [deviceId, ...deviceId.split(/[:\s]/)].map(identityKey).filter((key) => key.length >= 8),
+        );
+        if (!wanted.size) return undefined;
+        for (const client of this.clients.values()) {
+            const keys = [
+                client.state.deviceId,
+                client.state.macAddress,
+                client.state.clientId,
+                client.state.headerDeviceId,
+                client.state.headerClientId,
+            ]
+                .map(identityKey)
+                .filter((key) => key.length >= 8);
+            if (keys.some((key) => wanted.has(key))) return client;
+        }
+        return undefined;
+    }
+
+    private async replaceStaleActiveRun(deviceId: string, client?: OnlineClient) {
+        const activeRun = await this.runRepository.findOne({
+            where: {
+                deviceId,
+                status: In([
+                    "preparing",
+                    "transferring",
+                    "running",
+                    "stopping",
+                    "waiting_for_device",
+                ]),
+            },
+            order: { createdAt: "ASC" },
+        });
+        if (!activeRun) return;
+        if (!client) return;
+        this.logger.warn(
+            `Replacing stale Lua run ${activeRun.id} status=${activeRun.status} on ${deviceId}`,
+        );
+        if (client.state.protocol === "lap") {
+            this.sendLap(client.socket, { v: 1, type: "cancel", id: activeRun.id });
+        } else {
+            this.send(client, "run.stop", { run_id: activeRun.id, reason: "replaced" }, activeRun.id);
+        }
+        activeRun.status = "failed";
+        activeRun.error = { code: "REPLACED", message: "被新的脚本任务替换" };
+        activeRun.finishedAt = new Date();
+        await this.runRepository.save(activeRun);
+    }
+
+    private sendLap(socket: WebSocket, payload: Record<string, unknown>): boolean {
+        if (socket.readyState !== WebSocket.OPEN) {
+            this.logger.warn(
+                `LAP ${String(payload.type)} dropped readyState=${socket.readyState}`,
+            );
+            return false;
+        }
+        socket.send(JSON.stringify(payload));
+        return true;
     }
 
     private toLapCapabilities(required: string[] | null | undefined): string[] {
@@ -1028,11 +1160,16 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     }
 
     private serializeDevice(device: LuaPhysicalDevice) {
+        const live = this.findClient(device.deviceId)?.state;
+        const macAddress = live?.macAddress || device.runtime?.macAddress;
+        const clientId = live?.clientId || device.runtime?.clientId;
         return {
             id: device.id,
             deviceId: device.deviceId,
             displayName: device.displayName,
-            online: this.clients.has(device.deviceId),
+            online: Boolean(live),
+            macAddress,
+            clientId,
             firmwareVersion: device.firmwareVersion,
             bootId: device.bootId,
             capabilities: device.capabilities,

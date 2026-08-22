@@ -1,6 +1,6 @@
 /**
  * Webhook 节点表单 - 配置回传端点
- * 为 CubeCat 注册可调用的 MCP 工具，并生成可复制的提示词片段
+ * 不再动态注册 MCP 工具。这里只声明事件名和参数，调用说明会写入智能体提示词。
  */
 
 import { Button, Divider, Input, InputNumber } from "@douyinfe/semi-ui";
@@ -31,21 +31,21 @@ function ToolNameInput() {
     <Field<string> name="toolName">
       {({ field }) =>
         isSidebar ? (
-          <FormItem name="工具名称" required type="string">
+          <FormItem name="回传事件名" required type="string">
             <Input
               value={field.value ?? ""}
               onChange={(value) => field.onChange(value as string)}
               disabled={readonly}
-              placeholder="例如: timer_complete"
+              placeholder="例如: choose_puzzle"
               size="small"
               style={{ width: "100%" }}
             />
             <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
-              字母开头，只能包含字母、数字和下划线。流程跑到这里时会注册到 CubeCat。
+              CubeCat 调用常驻工具时，action 填这个名字。字母开头，只能包含字母、数字和下划线。
             </div>
           </FormItem>
         ) : (
-          <FormItem name="工具名称" type="string">
+          <FormItem name="回传事件名" type="string">
             <ReadonlyValue value={field.value ?? "未设置"} />
           </FormItem>
         )
@@ -62,13 +62,13 @@ function ToolDescriptionInput() {
     <Field<string> name="toolDescription">
       {({ field }) =>
         isSidebar ? (
-          <FormItem name="工具描述" type="string">
+          <FormItem name="调用说明" type="string">
             <textarea
               className="workflow-form-textarea"
               value={field.value ?? ""}
               onChange={(event) => field.onChange(event.target.value)}
               disabled={readonly}
-              placeholder="告诉模型什么时候该调用这个工具"
+              placeholder="告诉模型什么时候该回传，以及参数怎么填"
               rows={2}
               style={{
                 width: "100%",
@@ -82,7 +82,7 @@ function ToolDescriptionInput() {
             />
           </FormItem>
         ) : (
-          <FormItem name="工具描述" type="string">
+          <FormItem name="调用说明" type="string">
             <ReadonlyValue value={field.value ?? "未设置"} />
           </FormItem>
         )
@@ -124,35 +124,38 @@ function TimeoutInput() {
   );
 }
 
+const CALLBACK_TOOL_NAME = "classroom_report_completion";
+
 function generateXiaozhiPrompt(nodeData: {
+  title?: string;
   toolName?: string;
   toolDescription?: string;
   inputSchema?: {
     properties?: Record<string, { type?: string; title?: string; default?: unknown }>;
   };
 }): string {
-  const toolName = nodeData?.toolName || "[工具名称]";
-  const description = nodeData?.toolDescription || "接收用户请求后的回传数据";
+  const action = nodeData?.toolName || "[事件名]";
+  const title = nodeData?.title;
+  const description = nodeData?.toolDescription || "";
   const properties = nodeData?.inputSchema?.properties ?? {};
-  const exampleData: Record<string, unknown> = {};
+  const exampleData: Record<string, unknown> = { action };
   for (const [key, prop] of Object.entries(properties)) {
+    if (key === "action") continue;
     if (prop.default !== undefined) exampleData[key] = prop.default;
     else if (prop.type === "string") exampleData[key] = prop.title || key;
     else if (prop.type === "number") exampleData[key] = 0;
     else if (prop.type === "boolean") exampleData[key] = true;
     else if (prop.type === "object") exampleData[key] = {};
   }
-  const paramExample = JSON.stringify(
-    Object.keys(exampleData).length ? exampleData : { action: "trigger", data: {} },
-    null,
-    2,
-  );
-
-  return `当用户完成相关请求时，必须调用 MCP 工具 "${toolName}"。
-工具用途：${description}
+  const paramExample = JSON.stringify(exampleData, null, 2);
+  const heading = title
+    ? `当需要「${title}」时，调用 MCP 工具 ${CALLBACK_TOOL_NAME}。`
+    : `调用 MCP 工具 ${CALLBACK_TOOL_NAME}。`;
+  return `${heading}
+action 必须填 "${action}"。${description ? `\n${description}` : ""}
 调用参数示例：
 ${paramExample}
-只在确认任务完成后调用一次，不要提前或重复调用。`;
+只调用这个常驻工具，不要再找其它工具名。只在确认对应事情已经发生后调用一次，不要提前或重复调用。`;
 }
 
 function WebhookPromptGenerator() {
@@ -164,7 +167,7 @@ function WebhookPromptGenerator() {
   if (!isSidebar) {
     return (
       <FormItem name="提示词片段" type="string">
-        <ReadonlyValue value="打开侧边栏复制给「设置智能体」使用" />
+        <ReadonlyValue value="会自动写入前面的「设置智能体」提示词" />
       </FormItem>
     );
   }
@@ -189,7 +192,7 @@ function WebhookPromptGenerator() {
           }}
         >
           <div style={{ color: "#64748b", fontWeight: 500 }}>
-            把这段加到「设置智能体」的提示词里
+            运行「设置智能体」时会自动写入提示词，不用复制
           </div>
           <Button
             size="mini"
@@ -302,9 +305,9 @@ export const formMeta: FormMeta<FlowNodeJSON> = {
     ...defaultFormMeta.validate,
     toolName: ({ value }) => {
       const name = typeof value === "string" ? value.trim() : "";
-      if (!name) return "请输入工具名称";
+      if (!name) return "请输入回传事件名";
       if (!TOOL_NAME_PATTERN.test(name)) {
-        return "工具名必须以字母开头，只能包含字母、数字和下划线";
+        return "事件名必须以字母开头，只能包含字母、数字和下划线";
       }
       return undefined;
     },

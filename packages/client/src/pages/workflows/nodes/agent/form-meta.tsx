@@ -102,6 +102,9 @@ export const renderForm = () => {
         <PromptNameInput />
         <Divider />
         <FormInputs />
+        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+          下游回传端点的调用说明会自动追加到这段提示词后面，不需要手工粘贴。
+        </div>
         <Divider />
         <Field<JsonSchema> name="outputs">
           {({ field }) => <DisplayOutputs value={field.value} />}

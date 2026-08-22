@@ -62,6 +62,7 @@ _ts_decorate([
 ], SafeGameParticipant.prototype, "agentBindingId", void 0);
 _ts_decorate([
   typeorm.Column({
+    type: "varchar",
     length: 100
   }),
   _ts_metadata("design:type", String)
@@ -85,6 +86,7 @@ _ts_decorate([
 ], SafeGameParticipant.prototype, "studentName", void 0);
 _ts_decorate([
   typeorm.Column({
+    type: "varchar",
     length: 16,
     comment: "\u8FD9\u53F0\u8BBE\u5907\u5B88\u7740\u7684\u5BC6\u7801"
   }),

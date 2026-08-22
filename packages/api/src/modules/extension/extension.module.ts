@@ -157,6 +157,7 @@ export class ExtensionCoreModule implements OnModuleInit {
                     supportTerminal: [ExtensionSupportTerminal.WEB],
                     status: ExtensionStatus.ENABLED,
                     isLocal: true,
+                    config: manifest?.config,
                 });
                 this.logger.log(
                     `本地扩展 ${info.identifier} 已补齐数据库记录（${manifest?.name || info.name}）`,
@@ -178,6 +179,7 @@ export class ExtensionCoreModule implements OnModuleInit {
         homepage?: string;
         type?: string;
         author?: { avatar?: string; name: string; homepage?: string };
+        config?: Record<string, unknown>;
     } | null> {
         try {
             return await fs.readJson(path.join(extensionPath, "manifest.json"));

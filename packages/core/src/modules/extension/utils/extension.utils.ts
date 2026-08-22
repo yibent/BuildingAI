@@ -211,6 +211,10 @@ export async function getEnabledExtensionsFromConfig(extensionsDir?: string): Pr
             "Extensions Config",
             "No config found, all file system extensions will be loaded",
         );
+        const fileSystemExtensions = await getExtensionList(targetDir);
+        for (const extension of fileSystemExtensions) {
+            enabledIdentifiers.add(extension.identifier);
+        }
         return enabledIdentifiers;
     }
 

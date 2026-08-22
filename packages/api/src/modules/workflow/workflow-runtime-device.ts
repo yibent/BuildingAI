@@ -17,6 +17,8 @@ export function collectDeviceIdentities(
 export type LuaDeviceMatchInput = {
     deviceId: string;
     online?: boolean;
+    macAddress?: string | null;
+    clientId?: string | null;
 };
 
 export type CubeCatDeviceMatchInput = {
@@ -36,7 +38,11 @@ export function matchLuaDeviceId(
 ): { deviceId: string; online: boolean } | undefined {
     const luaByIdentity = new Map<string, LuaDeviceMatchInput>();
     for (const device of luaDevices) {
-        for (const key of collectDeviceIdentities(device.deviceId)) {
+        for (const key of collectDeviceIdentities(
+            device.deviceId,
+            device.macAddress,
+            device.clientId,
+        )) {
             const existing = luaByIdentity.get(key);
             if (!existing || (!existing.online && device.online)) {
                 luaByIdentity.set(key, device);

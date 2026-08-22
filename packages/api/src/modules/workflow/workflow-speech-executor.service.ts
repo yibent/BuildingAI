@@ -62,6 +62,8 @@ export class WorkflowSpeechExecutorService {
         const waitForComplete = input.node.data?.waitForComplete !== false;
         const modelId = asText(input.node.data?.modelId).trim();
 
+        // TTS is synthesized here and played with LAP `speak` + Opus frames.
+        // Do not send Lua (`require("speech")` no longer exists on CubeCat).
         const { audio, durationMs } = await this.synthesize(text, modelId, voice, speed);
         const run = await this.luaDeviceGatewayService.speak(input.userId, deviceId, {
             audio,

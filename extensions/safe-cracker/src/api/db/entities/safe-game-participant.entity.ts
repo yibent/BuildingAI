@@ -27,7 +27,7 @@ export class SafeGameParticipant {
     @Column({ type: "uuid", comment: "方糖猫绑定ID" })
     agentBindingId: string;
 
-    @Column({ length: 100 })
+    @Column({ type: "varchar", length: 100 })
     agentName: string;
 
     @Index()
@@ -39,7 +39,7 @@ export class SafeGameParticipant {
     @Column({ type: "varchar", length: 100, nullable: true })
     studentName: string | null;
 
-    @Column({ length: 16, comment: "这台设备守着的密码" })
+    @Column({ type: "varchar", length: 16, comment: "这台设备守着的密码" })
     password: string;
 
     @Column({ type: "varchar", length: 16, default: ParticipantStatus.RACING })
