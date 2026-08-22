@@ -154,6 +154,16 @@ export function XiaomiHomeSetting() {
     oauthWindowRef.current = popup;
     try {
       const result = await startOAuthMutation.mutateAsync({ cloudServer, mode: "direct" });
+      if (result.mode === "local_token") {
+        popup.close();
+        oauthWindowRef.current = null;
+        setLocalTokenCloudServer(result.cloudServer);
+        setLocalTokenStart(result);
+        setLocalCredentials("");
+        setLocalCommandCopied(false);
+        toast.success("当前小米 client 需要本地脚本登录，请按下方命令完成授权");
+        return;
+      }
       popup.location.href = result.authorizationUrl;
     } catch (error) {
       popup.close();

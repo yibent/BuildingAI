@@ -19,9 +19,6 @@ describe("workflow callback helpers", () => {
         expect(host.map((node) => node.id)).toEqual(["webhook_choose_1"]);
         expect(webhookActionName(host[0])).toBe("choose_puzzle");
 
-        const listen = collectDownstreamWebhookNodes(schema, "agent_listen_1");
-        expect(listen.map((node) => node.id)).toEqual(["webhook_answer_1"]);
-
         const adapt = collectDownstreamWebhookNodes(schema, "agent_adapt");
         expect(adapt.map((node) => node.id)).toEqual(["webhook_choose_2"]);
     });

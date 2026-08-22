@@ -10,7 +10,7 @@ import {
     ClassroomKitService,
     type ClassroomToolDefinition,
 } from "@buildingai/extension-sdk";
-import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 
 import { SafeGameParticipant } from "../../../db/entities/safe-game-participant.entity";
 import { SafeGameSession } from "../../../db/entities/safe-game-session.entity";
@@ -62,6 +62,7 @@ export class GameService implements OnModuleInit {
         private readonly sessionRepository: Repository<SafeGameSession>,
         @InjectRepository(SafeGameParticipant)
         private readonly participantRepository: Repository<SafeGameParticipant>,
+        @Inject(ClassroomKitService)
         private readonly kit: ClassroomKitService,
     ) {}
 
@@ -82,6 +83,9 @@ export class GameService implements OnModuleInit {
      */
     private async restoreActiveSessions(attempt = 1): Promise<void> {
         try {
+            if (typeof this.kit?.listActiveSessions !== "function") {
+                throw new Error("ClassroomKit 尚未就绪");
+            }
             const sessions = await this.kit.listActiveSessions(APP_IDENTIFIER);
             for (const session of sessions) {
                 const game = await this.sessionRepository.findOne({

@@ -44,7 +44,7 @@ jest.mock("./xiaomi-home.constants", () => {
     ) as typeof import("./xiaomi-home.constants");
     return {
         ...actual,
-        XIAOMI_HOME_LOCAL_OAUTH_ENABLED: true,
+        XIAOMI_HOME_LOCAL_OAUTH_ENABLED: false,
     };
 });
 
@@ -188,6 +188,30 @@ describe("XiaomiHomeService", () => {
                 }),
             ),
         ).toThrow("本地 Home Assistant 地址");
+    });
+
+    it("falls back to local script login when the Home Assistant client ID is used", async () => {
+        const { service, oauthSessionRepository } = createService();
+
+        const result = await service.startOAuth({
+            userId: "user-a",
+            cloudServer: "cn",
+            mode: "direct",
+            apiOrigin: "http://127.0.0.1:4090",
+            frontendOrigin: "http://127.0.0.1:4091",
+        });
+
+        expect(result.mode).toBe("local_token");
+        expect(result.redirectUri).toMatch(/^http:\/\/homeassistant\.local:8123\/api\/webhook\//);
+        expect(oauthSessionRepository.save).toHaveBeenCalled();
+    });
+
+    it("accepts local credential import for the Home Assistant client ID", async () => {
+        const { service } = createService();
+
+        await expect(service.importCredentials("user-a", "not-json")).rejects.toThrow(
+            "凭据不是有效的 JSON",
+        );
     });
 
     it("allows local script login from a remote frontend origin", async () => {

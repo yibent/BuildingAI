@@ -86,6 +86,10 @@ register("alert", function()
     }
 end)
 
+register("speech", function()
+    error('require("speech") 已移除。屏幕提示用 require("alert") 的 alert.show；合成语音走工作流「语音播报」节点，不要在 Lua 里朗读')
+end)
+
 register("camera", function()
     return {
         explain = function(question)

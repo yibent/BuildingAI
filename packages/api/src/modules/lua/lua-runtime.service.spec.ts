@@ -98,6 +98,17 @@ describe("LuaRuntimeService", () => {
         expect(simulator.get(session.id).cubecat.brightness).toBe(80);
     });
 
+    it("rejects the removed speech module instead of pretending it can do TTS", async () => {
+        await expect(
+            service.execute(`
+                function main()
+                    require("speech")
+                    return { ok = true }
+                end
+            `),
+        ).rejects.toThrow(/speech/);
+    });
+
     it("accepts both firmware and CubeMax ui constructor calling conventions", async () => {
         const result = await service.execute(`
             function main()

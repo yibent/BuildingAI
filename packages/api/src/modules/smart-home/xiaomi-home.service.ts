@@ -151,19 +151,21 @@ export class XiaomiHomeService {
         const deviceId = `ha.${randomUUID().replace(/-/g, "")}`;
         // Match Home Assistant's official Xiaomi integration state derivation.
         const state = createHash("sha1").update(`d=${deviceId}`).digest("hex");
-        const localToken = params.mode === "local_token";
+        const usesHomeAssistantClient =
+            XIAOMI_HOME_OAUTH_CLIENT_ID === XIAOMI_HOME_HOME_ASSISTANT_CLIENT_ID;
+        const localToken = params.mode === "local_token" || usesHomeAssistantClient;
 
         if (localToken) {
-            if (!XIAOMI_HOME_LOCAL_OAUTH_ENABLED) {
+            if (
+                params.mode === "local_token" &&
+                !XIAOMI_HOME_LOCAL_OAUTH_ENABLED &&
+                !usesHomeAssistantClient
+            ) {
                 throw HttpErrorFactory.badRequest("本地小米凭据导入未启用");
             }
-            if (XIAOMI_HOME_OAUTH_CLIENT_ID !== XIAOMI_HOME_HOME_ASSISTANT_CLIENT_ID) {
+            if (!usesHomeAssistantClient) {
                 throw HttpErrorFactory.badRequest("本地脚本仅适用于 Home Assistant 官方 client ID");
             }
-        } else if (XIAOMI_HOME_OAUTH_CLIENT_ID === XIAOMI_HOME_HOME_ASSISTANT_CLIENT_ID) {
-            throw HttpErrorFactory.badRequest(
-                "当前使用 Home Assistant client ID，请使用本地脚本登录或配置小米专用 client ID",
-            );
         }
 
         const redirectUri = localToken
@@ -196,7 +198,7 @@ export class XiaomiHomeService {
             cloudServer,
             redirectUri,
             state,
-            mode: params.mode,
+            mode: localToken ? "local_token" : "direct",
         };
     }
 
@@ -267,10 +269,12 @@ export class XiaomiHomeService {
     }
 
     async importCredentials(userId: string, serializedCredentials: string) {
-        if (!XIAOMI_HOME_LOCAL_OAUTH_ENABLED) {
-            throw HttpErrorFactory.badRequest("本地小米凭据导入未启用");
-        }
-        if (XIAOMI_HOME_OAUTH_CLIENT_ID !== XIAOMI_HOME_HOME_ASSISTANT_CLIENT_ID) {
+        const usesHomeAssistantClient =
+            XIAOMI_HOME_OAUTH_CLIENT_ID === XIAOMI_HOME_HOME_ASSISTANT_CLIENT_ID;
+        if (!usesHomeAssistantClient) {
+            if (!XIAOMI_HOME_LOCAL_OAUTH_ENABLED) {
+                throw HttpErrorFactory.badRequest("本地小米凭据导入未启用");
+            }
             throw HttpErrorFactory.badRequest("本地脚本仅适用于 Home Assistant 官方 client ID");
         }
 

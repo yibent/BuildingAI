@@ -60,6 +60,9 @@ class GameService {
    */
   async restoreActiveSessions(attempt = 1) {
     try {
+      if (typeof this.kit?.listActiveSessions !== "function") {
+        throw new Error("ClassroomKit \u5C1A\u672A\u5C31\u7EEA");
+      }
       const sessions = await this.kit.listActiveSessions(contract.APP_IDENTIFIER);
       for (const session of sessions) {
         const game = await this.sessionRepository.findOne({
@@ -648,6 +651,7 @@ GameService = _ts_decorate([
   common.Injectable(),
   _ts_param(0, typeorm.InjectRepository(safeGameSession_entity.SafeGameSession)),
   _ts_param(1, typeorm.InjectRepository(safeGameParticipant_entity.SafeGameParticipant)),
+  _ts_param(2, common.Inject(extensionSdk.ClassroomKitService)),
   _ts_metadata("design:type", Function),
   _ts_metadata("design:paramtypes", [
     typeof typeorm$1.Repository === "undefined" ? Object : typeorm$1.Repository,

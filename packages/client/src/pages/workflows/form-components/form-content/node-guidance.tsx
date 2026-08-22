@@ -39,6 +39,16 @@ const NODE_GUIDANCE: Partial<Record<string, NodeGuidanceContent>> = {
     result: "工具返回的数据会自动出现在后续节点的变量中。",
     example: "调用天气工具，查询用户所在城市的天气。",
   },
+  [WorkflowNodeType.Speech]: {
+    summary: "用通义千问把文字合成语音，经脚本通道直接在 CubeCat 上播放。",
+    steps: [
+      "在工程设置里把运行目标设为 CubeCat 设备",
+      "填写要朗读的文字，或从上游变量接入",
+      "需要时选择音色、语速，并决定是否等播完再继续",
+    ],
+    result: "设备喇叭播出合成语音。这不是 Lua，也不走 require(\"speech\")。",
+    example: "把上一关的判定结果朗读给小朋友听。",
+  },
   [WorkflowNodeType.Lua]: {
     summary: "在 CubeCat 或仿真设备上执行一个可复用的 Lua 模块。",
     steps: ["选择工程里的 Lua 模块", "把需要的输入接到变量", "查看模块会返回哪些结果"],

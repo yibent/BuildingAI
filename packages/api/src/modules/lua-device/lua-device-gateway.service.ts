@@ -710,7 +710,8 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     }
 
     private isSpeakRun(run: LuaDeviceRun): boolean {
-        return isRecord(run.params) && run.params.kind === "speak";
+        if (isRecord(run.params) && run.params.kind === "speak") return true;
+        return run.name === "speech" && !run.source;
     }
 
     private async sendSpeak(run: LuaDeviceRun) {
