@@ -314,14 +314,15 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
 
     async waitForRun(userId: string, deviceId: string, runId: string, maxWaitMs?: number) {
         const first = await this.requireOwnedRun(userId, deviceId, runId);
-        const deadline = Date.now() + (maxWaitMs ?? Math.min(70_000, (first.timeoutMs || 15_000) + 10_000));
+        const deadline =
+            Date.now() + (maxWaitMs ?? Math.min(70_000, (first.timeoutMs || 15_000) + 10_000));
         let run = first;
         while (Date.now() < deadline) {
             if (TERMINAL_STATUSES.includes(run.status as (typeof TERMINAL_STATUSES)[number])) {
                 return this.serializeRun(run);
             }
             await new Promise<void>((resolve) => setTimeout(resolve, 250));
-            run = await this.requireOwnedRun(userId, deviceId, runId);
+            run = await this.requireOwnedRun(userId, run.deviceId, runId);
         }
         throw HttpErrorFactory.badRequest("等待 CubeCat 执行结果超时");
     }
@@ -715,7 +716,17 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
     private async sendSpeak(run: LuaDeviceRun) {
         const client = this.findClient(run.deviceId);
         const audio = this.speakPayloads.get(run.id);
-        if (!client || !audio) return;
+        if (!audio) {
+            run.status = "failed";
+            run.error = { code: "AUDIO_MISSING", message: "播报音频已丢失，请重新运行节点" };
+            run.finishedAt = new Date();
+            await this.runRepository.save(run);
+            return;
+        }
+        if (!client) {
+            this.logger.warn(`speak ${run.id} not dispatched: ${run.deviceId} is offline`);
+            return;
+        }
         if (client.state.protocol !== "lap") {
             run.status = "failed";
             run.error = { code: "UNSUPPORTED", message: "当前设备协议不支持直接播报" };
@@ -725,7 +736,7 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             return;
         }
         const params = isRecord(run.params) ? run.params : {};
-        this.sendLap(client.socket, {
+        const sent = this.sendLap(client.socket, {
             v: 1,
             type: "speak",
             id: run.id,
@@ -737,15 +748,22 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
             wait: params.wait !== false,
             duration_ms: numberField(params, "durationMs") ?? audio.durationMs,
         });
+        if (!sent) {
+            run.status = "waiting_for_device";
+            run.error = { code: "SOCKET_CLOSED", message: "脚本通道已断开，等待重连" };
+            await this.runRepository.save(run);
+            return;
+        }
         for (const frame of audio.frames) {
             if (client.socket.readyState !== WebSocket.OPEN) break;
             client.socket.send(frame, { binary: true });
         }
         run.status = "running";
         run.startedAt ??= new Date();
+        run.error = null;
         await this.runRepository.save(run);
         this.logger.log(
-            `speak ${run.id} opus frames=${audio.frames.length} durationMs=${audio.durationMs}`,
+            `speak ${run.id} dispatched to ${run.deviceId} opus frames=${audio.frames.length} durationMs=${audio.durationMs}`,
         );
     }
 
@@ -989,7 +1007,13 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
 
     private async findDeviceRun(deviceId: string, runId?: string) {
         if (!runId) return null;
-        return this.runRepository.findOne({ where: { id: runId, deviceId } });
+        const run = await this.runRepository.findOne({ where: { id: runId } });
+        if (!run) return null;
+        if (run.deviceId === deviceId) return run;
+        const caller = this.findClient(deviceId);
+        const owner = this.findClient(run.deviceId);
+        if (caller && owner && caller.socket === owner.socket) return run;
+        return null;
     }
 
     private async requireDevice(deviceId: string) {
@@ -1011,10 +1035,15 @@ export class LuaDeviceGatewayService implements OnApplicationBootstrap, OnApplic
 
     private async requireOwnedRun(userId: string, deviceId: string, runId: string) {
         const run = await this.runRepository.findOne({
-            where: { id: runId, deviceId: deviceId.toLowerCase(), createBy: userId },
+            where: { id: runId, createBy: userId },
         });
         if (!run) throw HttpErrorFactory.notFound("Lua 运行任务不存在");
-        return run;
+        if (run.deviceId === deviceId.toLowerCase()) return run;
+        if (identityKey(run.deviceId) === identityKey(deviceId)) return run;
+        const caller = this.findClient(deviceId);
+        const owner = this.findClient(run.deviceId);
+        if (caller && owner && caller.socket === owner.socket) return run;
+        throw HttpErrorFactory.notFound("Lua 运行任务不存在");
     }
 
     private async handleLapResult(deviceId: string, envelope: Envelope) {
