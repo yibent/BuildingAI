@@ -31,9 +31,12 @@ import {
 } from "./programming-project.dto";
 import {
     buildDecryptGameSchema,
+    buildMoodLightSchema,
     DECRYPT_TEMPLATE_ID,
     DECRYPT_TEMPLATE_LUA_A,
     DECRYPT_TEMPLATE_LUA_B,
+    MOOD_LIGHT_TEMPLATE_ID,
+    MOOD_LIGHT_TEMPLATE_LUA,
 } from "./programming-project-templates";
 import { WorkflowService } from "./workflow.service";
 
@@ -281,6 +284,47 @@ export class ProgrammingProjectService {
                     }),
                 );
                 schema = buildDecryptGameSchema(codeA.id, codeB.id);
+            } else if (dto.template === MOOD_LIGHT_TEMPLATE_ID) {
+                if (createdProject.projectType !== "application") {
+                    throw HttpErrorFactory.badRequest("只有应用工程可以使用模板");
+                }
+                const moodLua = await luaModuleRepository.save(
+                    luaModuleRepository.create({
+                        name: MOOD_LIGHT_TEMPLATE_LUA.name,
+                        description: MOOD_LIGHT_TEMPLATE_LUA.description,
+                        draftCode: MOOD_LIGHT_TEMPLATE_LUA.draftCode,
+                        inputSchema: MOOD_LIGHT_TEMPLATE_LUA.inputSchema,
+                        outputSchema: MOOD_LIGHT_TEMPLATE_LUA.outputSchema,
+                        testParams: MOOD_LIGHT_TEMPLATE_LUA.testParams,
+                        assistantMessages: [],
+                        createBy: userId,
+                        projectId: createdProject.id,
+                    }),
+                );
+                const lights = await this.homeAssistantService.listDevices(userId, {
+                    category: "light",
+                });
+                const light = lights.find((item) => item.online) ?? lights[0];
+                if (light) {
+                    const toolRepository = manager.getRepository(ProgrammingProjectTool);
+                    await toolRepository.save(
+                        toolRepository.create({
+                            projectId: createdProject.id,
+                            kind: "homeassistant",
+                            mcpServerId: null,
+                            toolName: null,
+                            deviceId: light.id,
+                            toolKey: programmingProjectToolKey({
+                                kind: "homeassistant",
+                                deviceId: light.id,
+                            }),
+                        }),
+                    );
+                }
+                schema = buildMoodLightSchema(
+                    moodLua.id,
+                    light ? { deviceId: light.id, deviceName: light.name } : undefined,
+                );
             } else {
                 schema = isPopulatedSchema(dto.schema) ? dto.schema : defaultMainWorkflowSchema();
             }

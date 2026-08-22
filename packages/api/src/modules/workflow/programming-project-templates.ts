@@ -1,10 +1,14 @@
 /**
  * 应用工程模板。
  *
- * 设置小智 → 等待 MCP 选择 Lua 代码 A/B → 播放一段几秒的演示动画。
+ * 解密馆：设置小智 → 等待 MCP 选择 Lua 代码 A/B → 播放一段几秒的演示动画。
+ * 心情灯：小智聊天判断心情 → Lua 画出对应颜色 → 把智能家居的灯调成同样的颜色。
  */
 
 export const DECRYPT_TEMPLATE_ID = "decrypt";
+export const MOOD_LIGHT_TEMPLATE_ID = "mood-light";
+export const PROGRAMMING_PROJECT_TEMPLATE_IDS = [DECRYPT_TEMPLATE_ID, MOOD_LIGHT_TEMPLATE_ID] as const;
+export type ProgrammingProjectTemplateId = (typeof PROGRAMMING_PROJECT_TEMPLATE_IDS)[number];
 
 const AGENT_PROMPT_CHOOSE = `你是 CubeCat 演示馆馆长。说话简短、清楚。
 
@@ -466,6 +470,309 @@ export function buildDecryptGameSchema(
             { sourceNodeID: "lua_b", targetNodeID: "end_0" },
             {
                 sourceNodeID: "webhook_choose_1",
+                targetNodeID: "end_0",
+                sourcePortID: "error",
+            },
+        ],
+        globalVariable: { type: "object", required: [], properties: {} },
+    };
+}
+
+const AGENT_PROMPT_MOOD = `你是 CubeCat 心情灯助手。说话简短、温柔。
+
+先问问小朋友现在心情怎么样，听他把话说完。
+听完后自己判断心情，立刻回传。mood 只能填下面之一：
+happy, sad, angry, calm, excited, sleepy
+
+默认填 calm，除非小朋友明显是别的心情。
+回传之后请安静等待，不要继续说话，等工具返回设备上的结果后再根据结果说话。`;
+
+const MOOD_LIGHT_IO = {
+    inputSchema: {
+        type: "object" as const,
+        properties: {
+            mood: {
+                type: "string",
+                title: "心情",
+                description: "happy、sad、angry、calm、excited 或 sleepy。也接受中文。",
+            },
+            timeout_ms: {
+                type: "number",
+                title: "动画时长",
+                description: "心情色在屏幕上停留的最长毫秒数，默认 4000。点屏幕可以提前结束。",
+            },
+        },
+    },
+    outputSchema: {
+        type: "object" as const,
+        properties: {
+            action: { type: "string", title: "动作" },
+            mood: { type: "string", title: "心情" },
+            title: { type: "string", title: "名称" },
+            color: { type: "string", title: "灯光颜色" },
+            brightness: { type: "number", title: "亮度" },
+            message: { type: "string", title: "对玩家说的话" },
+        },
+    },
+};
+
+const LUA_MOOD_LIGHT = `-- 心情灯：把小智回传的心情画到屏幕上，并给出智能家居灯的颜色
+local runtime = require("runtime")
+local device = require("device")
+local ui = require("ui")
+
+local PALETTE = {
+  happy = { title = "开心", color = 0xFFD54A, hex = "#FFD54A", brightness = 90, message = "现在是开心的黄色，家里的灯也会跟着亮起来。" },
+  sad = { title = "难过", color = 0x4A90E2, hex = "#4A90E2", brightness = 40, message = "现在是安静的蓝色，灯光会柔和一点。" },
+  angry = { title = "生气", color = 0xE53935, hex = "#E53935", brightness = 85, message = "现在是醒目的红色。深呼吸，灯会帮你把情绪亮出来。" },
+  calm = { title = "平静", color = 0x66BB6A, hex = "#66BB6A", brightness = 55, message = "现在是舒缓的绿色，灯光会慢慢陪着你。" },
+  excited = { title = "兴奋", color = 0xFF7A18, hex = "#FF7A18", brightness = 100, message = "现在是活泼的橙色，灯会变得更亮、更热闹。" },
+  sleepy = { title = "困倦", color = 0x7E57C2, hex = "#7E57C2", brightness = 28, message = "现在是温柔的紫色，灯光会暗下来，方便休息。" },
+}
+
+local function as_text(value)
+  if type(value) == "table" then
+    return as_text(value.mood or value.value or value[1] or "")
+  end
+  if value == nil then return "" end
+  return tostring(value)
+end
+
+local function has(text, part)
+  return string.find(text, part, 1, true) ~= nil
+end
+
+local function resolve_mood(raw)
+  local text = string.lower(as_text(raw))
+  if has(text, "angry") or has(text, "mad") or has(text, "生气") or has(text, "愤怒") then
+    return "angry"
+  end
+  if has(text, "sleepy") or has(text, "tired") or has(text, "困") or has(text, "累") or has(text, "疲惫") then
+    return "sleepy"
+  end
+  if has(text, "sad") or has(text, "难过") or has(text, "伤心") or has(text, "沮丧") then
+    return "sad"
+  end
+  if has(text, "excited") or has(text, "兴奋") or has(text, "激动") then
+    return "excited"
+  end
+  if has(text, "happy") or has(text, "joy") or has(text, "开心") or has(text, "高兴") or has(text, "快乐") then
+    return "happy"
+  end
+  return "calm"
+end
+
+function main(params)
+  params = params or {}
+  local mood_key = resolve_mood(params.mood)
+  local mood = PALETTE[mood_key]
+  local width, height = ui.screen_size()
+  local screen = ui.screen({ background = mood.color })
+  ui.label({ parent = screen, text = "心情灯", x = 18, y = 16, color = 0xffffff })
+  local title = ui.label({ parent = screen, text = mood.title, x = 18, y = 56, color = 0xffffff })
+  local blob_w = math.floor(width * 0.36)
+  local blob = ui.rect({
+    parent = screen,
+    x = math.floor((width - blob_w) / 2),
+    y = math.floor(height * 0.38),
+    width = blob_w,
+    height = blob_w,
+    color = 0xffffff,
+    radius = math.floor(blob_w / 2),
+  })
+  ui.load(screen)
+
+  local limit = tonumber(params.timeout_ms) or 4000
+  if limit < 400 then limit = 400 end
+  if limit > 12000 then limit = 12000 end
+  local started = runtime.now_ms()
+  local next_frame = started
+  local t = 0
+
+  while not runtime.cancelled() do
+    if runtime.now_ms() - started >= limit then break end
+    local ev = ui.poll_event(0)
+    if ev and (ev.type == "pressed" or ev.type == "clicked") then break end
+
+    t = t + 0.033
+    local scale = 0.78 + 0.12 * math.sin(t * 3.2)
+    local size = math.floor(blob_w * scale)
+    ui.update(blob, {
+      x = math.floor((width - size) / 2),
+      y = math.floor(height * 0.38 + (blob_w - size) / 2),
+      width = size,
+      height = size,
+      radius = math.floor(size / 2),
+    })
+    ui.set_text(title, mood.title)
+
+    next_frame = next_frame + 33
+    local now = runtime.now_ms()
+    if next_frame < now then next_frame = now end
+    runtime.sleep_until(next_frame)
+  end
+
+  device.notify(mood.message)
+  return {
+    action = "mood_light",
+    mood = mood_key,
+    title = mood.title,
+    color = mood.hex,
+    brightness = mood.brightness,
+    message = mood.message,
+  }
+end
+`;
+
+export const MOOD_LIGHT_TEMPLATE_LUA = {
+    name: "心情灯效",
+    description: "根据心情在 CubeCat 屏幕上画出对应颜色，并返回智能家居灯要用的色值和亮度。",
+    draftCode: LUA_MOOD_LIGHT,
+    ...MOOD_LIGHT_IO,
+    testParams: { mood: "happy", timeout_ms: 400 },
+};
+
+const SMART_HOME_OUTPUTS = {
+    type: "object",
+    properties: {
+        success: { type: "boolean", title: "执行成功" },
+        deviceId: { type: "string", title: "设备 ID" },
+        name: { type: "string", title: "设备名称" },
+        online: { type: "boolean", title: "在线" },
+        state: { type: "object", title: "设备状态" },
+    },
+};
+
+export type MoodLightDeviceBinding = {
+    deviceId?: string;
+    deviceName?: string;
+};
+
+function smartHomeNode(
+    id: string,
+    title: string,
+    light: MoodLightDeviceBinding | undefined,
+    inputsValues: Record<string, unknown>,
+    position: { x: number; y: number },
+) {
+    return {
+        id,
+        type: "smart_home",
+        meta: { position },
+        data: {
+            title,
+            provider: "homeassistant",
+            deviceId: light?.deviceId ?? "",
+            deviceName: light?.deviceName ?? "请选择一盏彩灯",
+            category: "light",
+            command: { on: true, mode: "color", color: "#FFD54A", brightness: 80 },
+            inputs: {
+                type: "object",
+                properties: {
+                    on: { type: "boolean", title: "开关" },
+                    brightness: { type: "number", title: "亮度" },
+                    color: { type: "string", title: "颜色" },
+                },
+            },
+            inputsValues,
+            outputs: SMART_HOME_OUTPUTS,
+        },
+    };
+}
+
+export function buildMoodLightSchema(
+    luaModuleId: string,
+    light?: MoodLightDeviceBinding,
+): Record<string, unknown> {
+    const mood = {
+        name: "mood",
+        title: "心情",
+        description: "只能填 happy、sad、angry、calm、excited 或 sleepy。默认 calm。",
+    };
+
+    return {
+        nodes: [
+            {
+                id: "start_0",
+                type: "start",
+                meta: { position: { x: 80, y: 220 } },
+                data: {
+                    title: "开始",
+                    outputs: { type: "object", properties: {} },
+                },
+            },
+            agentNode(
+                "agent_mood",
+                "请小智聊心情",
+                "心情灯助手",
+                AGENT_PROMPT_MOOD,
+                constant(""),
+                { x: 360, y: 180 },
+            ),
+            webhookNode(
+                "webhook_mood",
+                "等待回传心情",
+                "report_mood",
+                "聊完后立刻回传心情。mood 只能填 happy、sad、angry、calm、excited 或 sleepy。默认 calm。",
+                mood,
+                120000,
+                { x: 680, y: 160 },
+            ),
+            {
+                id: "lua_mood",
+                type: "lua",
+                meta: { position: { x: 1020, y: 160 } },
+                data: {
+                    title: "画出心情颜色",
+                    luaModuleId,
+                    inputs: {
+                        type: "object",
+                        properties: {
+                            mood: { type: "string", title: "心情" },
+                            timeout_ms: { type: "number", title: "动画时长" },
+                        },
+                    },
+                    inputsValues: {
+                        mood: ref("webhook_mood", "data", "mood"),
+                        timeout_ms: constant(4000),
+                    },
+                    outputs: MOOD_LIGHT_IO.outputSchema,
+                },
+            },
+            smartHomeNode(
+                "smarthome_mood",
+                "把灯调成心情色",
+                light,
+                {
+                    on: constant(true),
+                    color: ref("lua_mood", "color"),
+                    brightness: ref("lua_mood", "brightness"),
+                },
+                { x: 1380, y: 160 },
+            ),
+            {
+                id: "end_0",
+                type: "end",
+                meta: { position: { x: 1760, y: 180 } },
+                data: {
+                    title: "结束",
+                    inputsValues: {},
+                    inputs: { type: "object", properties: {} },
+                },
+            },
+        ],
+        edges: [
+            { sourceNodeID: "start_0", targetNodeID: "agent_mood" },
+            { sourceNodeID: "agent_mood", targetNodeID: "webhook_mood" },
+            {
+                sourceNodeID: "webhook_mood",
+                targetNodeID: "lua_mood",
+                sourcePortID: "received",
+            },
+            { sourceNodeID: "lua_mood", targetNodeID: "smarthome_mood" },
+            { sourceNodeID: "smarthome_mood", targetNodeID: "end_0" },
+            {
+                sourceNodeID: "webhook_mood",
                 targetNodeID: "end_0",
                 sourcePortID: "error",
             },

@@ -73,7 +73,7 @@ export interface CreateProgrammingProjectDto {
     description?: string;
     projectType?: ProgrammingProjectType;
     schema?: Record<string, unknown>;
-    template?: "decrypt";
+    template?: "decrypt" | "mood-light";
 }
 
 export interface UpdateProgrammingProjectDto {

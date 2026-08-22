@@ -55,8 +55,8 @@ export class CreateProgrammingProjectDto {
     schema?: Record<string, unknown>;
 
     @IsOptional()
-    @IsIn(["decrypt"])
-    template?: "decrypt";
+    @IsIn(["decrypt", "mood-light"])
+    template?: "decrypt" | "mood-light";
 }
 
 export class UpdateProgrammingProjectDto {

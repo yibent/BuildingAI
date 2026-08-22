@@ -11,17 +11,28 @@ import {
 import { Input } from "@buildingai/ui/components/ui/input";
 import { Label } from "@buildingai/ui/components/ui/label";
 import { Textarea } from "@buildingai/ui/components/ui/textarea";
-import { Check, CircuitBoard, MessageCircle, Puzzle, SquareDashed } from "lucide-react";
+import { Check, CircuitBoard, Lightbulb, MessageCircle, Puzzle, SquareDashed } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 
 const MAX_PROJECT_NAME_LENGTH = 100;
 const EXAMPLE_PROJECT_NAME = "CubeCat 智能巡线";
 
-const DECRYPT_TEMPLATE = {
-  id: "decrypt" as const,
-  name: "解密馆",
-  description: "小智按解密表现挑选下一关，题目由 Lua 在 CubeCat 上出题和判定。",
-};
+const APPLICATION_TEMPLATES = [
+  {
+    id: "decrypt" as const,
+    name: "解密馆",
+    description: "小智按解密表现挑选下一关，题目由 Lua 在 CubeCat 上出题和判定。",
+    icon: Puzzle,
+  },
+  {
+    id: "mood-light" as const,
+    name: "心情灯",
+    description: "和小智聊天判断心情，Lua 画出对应颜色，再把家里的灯调成同样的颜色。",
+    icon: Lightbulb,
+  },
+] as const;
+
+type ApplicationTemplateId = (typeof APPLICATION_TEMPLATES)[number]["id"];
 
 function typeCardClass(selected: boolean) {
   return `group relative flex min-h-28 flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors ${
@@ -43,7 +54,7 @@ interface ProjectNameDialogProps {
     name: string;
     description: string;
     projectType?: ProgrammingProjectType;
-    template?: "decrypt";
+    template?: ApplicationTemplateId;
   }) => void;
 }
 
@@ -62,14 +73,14 @@ export function ProjectNameDialog({
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
   const [projectType, setProjectType] = useState<ProgrammingProjectType>(initialProjectType);
-  const [useTemplate, setUseTemplate] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<ApplicationTemplateId | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setName(initialName);
     setDescription(initialDescription);
     setProjectType(initialProjectType);
-    setUseTemplate(false);
+    setSelectedTemplate(null);
   }, [initialDescription, initialName, initialProjectType, open]);
 
   const normalizedName = name.trim();
@@ -89,8 +100,8 @@ export function ProjectNameDialog({
         ...(mode === "create"
           ? {
               projectType,
-              ...(projectType === "application" && useTemplate
-                ? { template: DECRYPT_TEMPLATE.id }
+              ...(projectType === "application" && selectedTemplate
+                ? { template: selectedTemplate }
                 : {}),
             }
           : {}),
@@ -100,7 +111,7 @@ export function ProjectNameDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !isPending && onOpenChange(nextOpen)}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "新建工程" : "工程信息"}</DialogTitle>
           <DialogDescription>
@@ -119,7 +130,7 @@ export function ProjectNameDialog({
                   className={typeCardClass(projectType === "conversation")}
                   onClick={() => {
                     setProjectType("conversation");
-                    setUseTemplate(false);
+                    setSelectedTemplate(null);
                   }}
                   aria-pressed={projectType === "conversation"}
                 >
@@ -157,16 +168,17 @@ export function ProjectNameDialog({
           {mode === "create" && projectType === "application" && (
             <div className="grid gap-2">
               <Label>从模板进行创建</Label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <button
                   type="button"
-                  className={typeCardClass(!useTemplate)}
+                  className={typeCardClass(selectedTemplate === null)}
                   onClick={() => {
-                    setUseTemplate(false);
-                    if (name.trim() === DECRYPT_TEMPLATE.name) setName("");
-                    if (description.trim() === DECRYPT_TEMPLATE.description) setDescription("");
+                    const previous = APPLICATION_TEMPLATES.find((item) => item.id === selectedTemplate);
+                    setSelectedTemplate(null);
+                    if (previous && name.trim() === previous.name) setName("");
+                    if (previous && description.trim() === previous.description) setDescription("");
                   }}
-                  aria-pressed={!useTemplate}
+                  aria-pressed={selectedTemplate === null}
                 >
                   <span className="bg-muted text-foreground flex size-9 items-center justify-center rounded-lg">
                     <SquareDashed className="size-4" />
@@ -175,29 +187,50 @@ export function ProjectNameDialog({
                   <span className="text-muted-foreground text-xs leading-4">
                     从开始节点自己编排设备、Lua 和智能动作
                   </span>
-                  {!useTemplate && <Check className="text-primary absolute top-3 right-3 size-4" />}
+                  {selectedTemplate === null && (
+                    <Check className="text-primary absolute top-3 right-3 size-4" />
+                  )}
                 </button>
-                <button
-                  type="button"
-                  className={typeCardClass(useTemplate)}
-                  onClick={() => {
-                    setUseTemplate(true);
-                    if (!name.trim() || name.trim() === EXAMPLE_PROJECT_NAME) {
-                      setName(DECRYPT_TEMPLATE.name);
-                    }
-                    if (!description.trim()) setDescription(DECRYPT_TEMPLATE.description);
-                  }}
-                  aria-pressed={useTemplate}
-                >
-                  <span className="bg-muted text-foreground flex size-9 items-center justify-center rounded-lg">
-                    <Puzzle className="size-4" />
-                  </span>
-                  <span className="text-sm font-semibold">{DECRYPT_TEMPLATE.name}</span>
-                  <span className="text-muted-foreground text-xs leading-4">
-                    {DECRYPT_TEMPLATE.description}
-                  </span>
-                  {useTemplate && <Check className="text-primary absolute top-3 right-3 size-4" />}
-                </button>
+                {APPLICATION_TEMPLATES.map((template) => {
+                  const Icon = template.icon;
+                  const selected = selectedTemplate === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className={typeCardClass(selected)}
+                      onClick={() => {
+                        const previous = APPLICATION_TEMPLATES.find(
+                          (item) => item.id === selectedTemplate,
+                        );
+                        setSelectedTemplate(template.id);
+                        if (
+                          !name.trim() ||
+                          name.trim() === EXAMPLE_PROJECT_NAME ||
+                          (previous && name.trim() === previous.name)
+                        ) {
+                          setName(template.name);
+                        }
+                        if (
+                          !description.trim() ||
+                          (previous && description.trim() === previous.description)
+                        ) {
+                          setDescription(template.description);
+                        }
+                      }}
+                      aria-pressed={selected}
+                    >
+                      <span className="bg-muted text-foreground flex size-9 items-center justify-center rounded-lg">
+                        <Icon className="size-4" />
+                      </span>
+                      <span className="text-sm font-semibold">{template.name}</span>
+                      <span className="text-muted-foreground text-xs leading-4">
+                        {template.description}
+                      </span>
+                      {selected && <Check className="text-primary absolute top-3 right-3 size-4" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
